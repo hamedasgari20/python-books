@@ -11,3 +11,9 @@ their own term for chaos: the Big Ball of Mud anti-pattern.
 
 ![](big_ball_of_mud.png "Big ball of mud")
 
+If you’d like a picture of where we’re going, take a look at Figure below, but don’t worry if
+none of it makes sense yet! We introduce each box in the figure, one by one.
+
+![](component_diagram_for_our_app.png)
+
+## Chapter1: Domain Modeling
