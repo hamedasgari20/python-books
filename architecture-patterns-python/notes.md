@@ -1,8 +1,13 @@
-# Architecture Patterns with Python: Enabling Test-Driven Development, Domain-Driven Design, and Event-Driven Microservices
+**Architecture Patterns with Python: Enabling Test-Driven Development, Domain-Driven Design, and Event-Driven Microservices**
 
 Authors: Bob Gregory, Harry Percival
 
-## Introduction
+<!-- TOC -->
+* [Introduction](#introduction)
+* [Chapter1: Domain Modeling](#chapter1-domain-modeling)
+<!-- TOC -->
+
+# Introduction
 
 Software systems, tend toward chaos. When we first start building a new system,
 we have grand ideas that our code will be clean and well ordered, but over time we
@@ -16,4 +21,4 @@ none of it makes sense yet! We introduce each box in the figure, one by one.
 
 ![](component_diagram_for_our_app.png)
 
-## Chapter1: Domain Modeling
+# Chapter1: Domain Modeling
