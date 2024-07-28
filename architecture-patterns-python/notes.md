@@ -9,4 +9,4 @@ we have grand ideas that our code will be clean and well ordered, but over time 
 find that it ends up a number of confusing classes and util modules. This is so common that software engineers have
 their own term for chaos: the Big Ball of Mud anti-pattern.
 
-![](F:\python-books\architecture-patterns-python\big_ball_of_mud.png "Big ball")
+![](.\big_ball_of_mud.png "Big ball of mud")
