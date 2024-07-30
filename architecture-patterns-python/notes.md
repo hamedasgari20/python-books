@@ -1,15 +1,17 @@
-**Architecture Patterns with Python: Enabling Test-Driven Development, Domain-Driven Design, and Event-Driven Microservices**
+# Architecture Patterns with Python: Enabling Test-Driven Development, Domain-Driven Design, and Event-Driven Microservices
 
 Authors: Bob Gregory, Harry Percival
 
 <!-- TOC -->
-* [Introduction](#introduction)
-* [Chapter1: Domain Modeling](#chapter1-domain-modeling)
+* [Architecture Patterns with Python: Enabling Test-Driven Development, Domain-Driven Design, and Event-Driven Microservices](#architecture-patterns-with-python-enabling-test-driven-development-domain-driven-design-and-event-driven-microservices)
+  * [Introduction](#introduction)
+  * [Chapter1: Domain Modeling](#chapter1-domain-modeling)
+  * [Chapter2: Repository Pattern](#chapter2-repository-pattern)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
 
-# Introduction
+## Introduction
 
 Software systems, tend toward chaos. When we first start building a new system,
 we have grand ideas that our code will be clean and well ordered, but over time we
@@ -23,7 +25,7 @@ none of it makes sense yet! We introduce each box in the figure, one by one.
 
 ![](images/component_diagram_for_our_app.png)
 
-# Chapter1: Domain Modeling
+## Chapter1: Domain Modeling
 This chapter looks into how we can model business processes with code, in a way
 that’s highly compatible with TDD.
 
@@ -187,7 +189,7 @@ Figure below is a visual representation of where we’ve ended up.
 That’ll probably do for now! We have a domain service that we can use for our first
 use case. 
 
-# Chapter2: Repository Pattern
+## Chapter2: Repository Pattern
 It’s time to use the dependency inversion principle as a way of decoupling our core logic from infrastructural concerns. 
 We’ll introduce the **Repository pattern**, a simplifying abstraction over data storage, allowing us to decouple our model layer from the business layer.
 Figure below shows a little preview of what we’re going to build: a Repository object that sits between our domain model and the database.
