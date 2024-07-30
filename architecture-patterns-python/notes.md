@@ -188,3 +188,119 @@ That’ll probably do for now! We have a domain service that we can use for our 
 use case. 
 
 # Chapter2: Repository Pattern
+It’s time to use the dependency inversion principle as a way of decoupling our core logic from infrastructural concerns. 
+We’ll introduce the **Repository pattern**, a simplifying abstraction over data storage, allowing us to decouple our model layer from the business layer.
+Figure below shows a little preview of what we’re going to build: a Repository object that sits between our domain model and the database.
+
+![](images/before_and_after_the_repository_pattern.png)
+
+The code for this chapter is in the [chapter_02_repository branch](https://github.com/cosmicpython/code/tree/chapter_02_repository)
+
+When we build our first API endpoint, we know we’re going to have some code that looks more or less like the following.
+
+```angular2html
+@flask.route.gubbins
+def allocate_endpoint():
+     # extract order line from request
+     line = OrderLine(request.params, ...)
+     # load all batches from the DB
+     batches = ...
+     # call our domain service
+     allocate(line, batches)
+     # then save the allocation back to the database somehow
+     return 201
+```
+At this point, though, our API endpoint might look something like the following, and we could get it to work just fine:
+Using SQLAlchemy directly in our API endpoint
+
+```angular2html
+@flask.route.gubbins
+def allocate_endpoint():
+     session = start_session()
+     # extract order line from request
+     line = OrderLine(
+     request.json['orderid'],
+     request.json['sku'],
+     request.json['qty'],
+     )
+     # load all batches from the DB
+     batches = session.query(Batch).all()
+     # call our domain service
+     allocate(line, batches)
+     # save the allocation back to the database
+     session.commit()
+     return 201
+```
+
+- **Introducing the Repository Pattern**
+
+The **Repository Pattern** is a design pattern that acts as an abstraction layer between the data access layer and the business logic of an application. It encapsulates all data access logic and provides a clean API for the rest of the application to interact with, allowing for better separation of concerns and easier testing.
+Here’s what an abstract base class (ABC) for our repository would look like:
+
+```angular2html
+class AbstractRepository(abc.ABC):
+    @abc.abstractmethod
+    def add(self, batch: model.Batch):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get(self, reference) -> model.Batch:
+        raise NotImplementedError
+```
+And here is a typical repository:
+
+```angular2html
+
+class SqlAlchemyRepository(AbstractRepository):
+    def __init__(self, session):
+        self.session = session
+
+    def add(self, batch):
+        self.session.add(batch)
+
+    def get(self, reference):
+        return self.session.query(model.Batch).filter_by(reference=reference).one()
+
+    def list(self):
+        return self.session.query(model.Batch).all()
+```
+And now our Flask endpoint might look something like the following:
+
+```angular2html
+@flask.route.gubbins
+def allocate_endpoint():
+     batches = SqlAlchemyRepository.list()
+     lines = [
+     OrderLine(l['orderid'], l['sku'], l['qty'])
+     for l in request.params...
+     ]
+     allocate(lines, batches)
+     session.commit()
+     return 201
+```
+ - **What Is a Port and What Is an Adapter, in Python?** (Perplexity is used for better definition in this section)
+
+In the context of the ports and adapters architectural pattern, a port is an abstract interface that defines how the application interacts with external components, while an adapter is a concrete implementation of that interface that handles the communication with the external component.
+
+A **port** is an abstract interface, usually defined as an abstract base class (ABC) or a protocol, that specifies the methods and attributes that adapters must implement. For example:
+
+```angular2html
+from abc import ABC, abstractmethod
+
+class PrintAdapterPort(ABC):
+    @abstractmethod
+    def print_number(self, number: int):
+        raise NotImplementedError
+```
+
+In this example, **PrintAdapterPort** is a port that defines a **print_number** method for printing an integer. 
+
+An **adapter** is a concrete class that implements a port's interface and handles the communication with an external component. For example:
+
+```angular2html
+class ConsolePrintAdapter(PrintAdapterPort):
+    def print_number(self, number: int):
+        print(f"The generated number is: {number}")
+```
+
+Here, **ConsolePrintAdapter** is an adapter that implements the **PrintAdapterPort** interface by printing the number to the console.
