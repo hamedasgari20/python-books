@@ -13,7 +13,7 @@ Authors: Bob Gregory, Harry Percival
 
 Software systems, tend toward chaos. When we first start building a new system,
 we have grand ideas that our code will be clean and well ordered, but over time we
-find that it ends up a number of confusing classes and util modules. This is so common that software engineers have
+find that it ends up a number of confusing classes and modules. This is so common that software engineers have
 their own term for chaos: the Big Ball of Mud anti-pattern.
 
 ![](images/big_ball_of_mud.png "Big ball of mud")
@@ -46,13 +46,13 @@ goods from Poland or China or Vietnam and into your living room. At a high level
 stock to customers, and shipping goods to customers. A system in the middle needs
 to coordinate the process by allocating stock to a customer’s orders.
 
-![](images\diagram_of_the_company.png)
+![](images/diagram_of_the_company.png)
 
 For the purposes of this book, we’re imagining that the business decides to implement
 an exciting new way of allocating stock. Until now, the business has been presenting
 stock and lead times based on what is physically available in the warehouse. If and
-when the warehouse runs out, a product is listed as “out of stock” until the next ship‐
-ment arrives from the manufacturer.
+when the warehouse runs out, a product is listed as “out of stock” until the next shipment arrives from the manufacturer.
+
 Here’s the innovation: if we have a system that can keep track of all our shipments
 and when they’re due to arrive, we can treat the goods on those ships as real stock and
 part of our inventory, just with slightly longer lead times. Fewer goods will appear to
@@ -66,8 +66,7 @@ some domain modeling.**
 The following notes we might have taken while having a conversation with our domain experts about allocation.
 
 1- A product is identified by a SKU, pronounced “skew,” which is short for stock-keeping
-unit. Customers place orders. An order is identified by an order reference and compri‐
-ses multiple order lines, where each line has a SKU and a quantity. For example: _10 units of RED-CHAIR_
+unit. Customers place orders. An order is identified by an order reference and comprises multiple order lines, where each line has a SKU and a quantity. For example: _10 units of RED-CHAIR_
 
 2- The purchasing department orders small batches of stock. A batch of stock has a
 unique ID called a reference, a SKU, and a quantity.
@@ -100,7 +99,7 @@ jargon. And here is a domain model that meets our requirements:
 
 here is our UML and domain model:
 
-![](images\uml.png)
+![](images/uml.png)
 
 ```angular2html
 
@@ -147,8 +146,8 @@ minus allocated quantity.
 - **Value Object**
 
 Whenever we have a business concept that has data but no identity, we often choose
-to represent it using the Value Object pattern. A value object is any domain object that
-is uniquely identified by the data it holds. in previous example OrderLine is value object:
+to represent it using the **Value Object** pattern. A value object is any domain object that
+is uniquely identified by the data it holds. in previous example **OrderLine** is value object:
 
 ```angular2html
 
@@ -183,7 +182,9 @@ Python is a multiparadigm language, so let the “verbs” in your code be funct
 
 Figure below is a visual representation of where we’ve ended up.
 
-![](images\domain_model_in_first_chapter.png)
+![](images/domain_model_in_first_chapter.png)
 
 That’ll probably do for now! We have a domain service that we can use for our first
 use case. 
+
+# Chapter2: Repository Pattern
