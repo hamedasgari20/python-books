@@ -306,3 +306,148 @@ class ConsolePrintAdapter(PrintAdapterPort):
 ```
 
 Here, **ConsolePrintAdapter** is an adapter that implements the **PrintAdapterPort** interface by printing the number to the console.
+
+## Chapter3: A Brief Interlude: On Coupling and Abstractions
+
+Allow us a brief digression on the subject of abstractions, dear reader.
+The code for this chapter is in the [chapter_03_abstractions branch](https://github.com/cosmicpython/code/tree/chapter_03_abstractions)
+
+A key theme in this book, hidden among the fancy patterns, is that we can use simple
+abstractions to hide messy details. When we’re unable to change component A for fear of breaking component B, we say
+that the components have become **coupled**. Globally, coupling is a nuisance: it increases the risk and the cost of changing our
+code, sometimes to the point where we feel unable to make any changes at all.
+We can reduce the degree of coupling within a system by **abstracting
+away the details**.
+
+Let’s see an example. Imagine we want to write code for synchronizing two file directories, which we’ll call the **_source_** and the **_destination_**:
+
+1- If a file exists in the source but not in the destination, copy the file over.
+
+2- If a file exists in the source, but it has a different name than in the destination, rename the destination file to match.
+
+3- If a file exists in the destination but not in the source, remove it.
+
+Our first and third requirements are simple enough: we can just compare two lists of paths. Our second is trickier, though. To detect renames, we’ll have to inspect the
+content of files. For this, we can use a hashing function like MD5 or SHA-1. The code to generate a SHA-1 hash from a file is simple enough:
+
+```angular2html
+def hash_file(path):
+    hasher = hashlib.sha1()
+    with path.open("rb") as file:
+        buf = file.read(BLOCKSIZE)
+        while buf:
+            hasher.update(buf)
+            buf = file.read(BLOCKSIZE)
+    return hasher.hexdigest()
+```
+Our first hackish approach looks something like this:
+
+```angular2html
+import hashlib
+import os
+import shutil
+from pathlib import Path
+
+def sync(source, dest):
+    # Walk the source folder and build a dict of filenames and their hashes
+   source_hashes = {}
+   for folder, _, files in os.walk(source):
+     for fn in files:
+       source_hashes[hash_file(Path(folder) / fn)] = fn
+   seen = set() # Keep track of the files we've found in the target
+   # Walk the target folder and get the filenames and hashes
+   for folder, _, files in os.walk(dest):
+     for fn in files:
+       dest_path = Path(folder) / fn
+       dest_hash = hash_file(dest_path)
+       seen.add(dest_hash)
+       # if there's a file in target that's not in source, delete it
+       if dest_hash not in source_hashes:
+         dest_path.remove()
+       # if there's a file in target that has a different path in source,
+       # move it to the correct path
+       elif dest_hash in source_hashes and fn != source_hashes[dest_hash]:
+         shutil.move(dest_path, Path(folder) / source_hashes[dest_hash])
+   # for every file that appears in source but not target, copy the file to
+   # the target
+   for src_hash, fn in source_hashes.items():
+     if src_hash not in seen:
+       shutil.copy(Path(source) / fn, Path(dest) / fn)
+```
+
+Fantastic! We have some code and it looks OK. The problem is that our domain
+logic, “figure out the difference between two directories,” is tightly coupled to the I/O
+code. We can’t run our difference algorithm without calling the pathlib, shutil, and
+hashlib modules. On top of that, our code isn’t very extensible. Our high-level code is coupled to low-level details, and it’s making life hard.
+
+- **What could we do to rewrite our code to make it more testable?**
+
+We can think of these as three distinct responsibilities that the code has:
+
+1. We interrogate the filesystem by using os.walk and determine hashes for a series
+of paths. This is similar in both the source and the destination cases.
+2. We decide whether a file is new, renamed, or redundant.
+3. We copy, move, or delete files to match the source.
+
+
+- **Implementing Our Chosen Abstractions**
+
+Here is refactored version of my codes:
+
+```angular2html
+def sync(source, dest):
+    # imperative shell step 1, gather inputs
+    source_hashes = read_paths_and_hashes(source)
+    dest_hashes = read_paths_and_hashes(dest)
+
+    # step 2: call functional core
+    actions = determine_actions(source_hashes, dest_hashes, source, dest)
+
+    # imperative shell step 3, apply outputs
+    for action, *paths in actions:
+        if action == "COPY":
+            shutil.copyfile(*paths)
+        if action == "MOVE":
+            shutil.move(*paths)
+        if action == "DELETE":
+            os.remove(paths[0])
+
+def hash_file(path):
+    hasher = hashlib.sha1()
+    with path.open("rb") as file:
+        buf = file.read(BLOCKSIZE)
+        while buf:
+            hasher.update(buf)
+            buf = file.read(BLOCKSIZE)
+    return hasher.hexdigest()
+
+
+def read_paths_and_hashes(root):
+    hashes = {}
+    for folder, _, files in os.walk(root):
+        for fn in files:
+            hashes[hash_file(Path(folder) / fn)] = fn
+    return hashes
+
+
+def determine_actions(source_hashes, dest_hashes, source_folder, dest_folder):
+    for sha, filename in source_hashes.items():
+        if sha not in dest_hashes:
+            sourcepath = Path(source_folder) / filename
+            destpath = Path(dest_folder) / filename
+            yield "COPY", sourcepath, destpath
+
+        elif dest_hashes[sha] != filename:
+            olddestpath = Path(dest_folder) / dest_hashes[sha]
+            newdestpath = Path(dest_folder) / filename
+            yield "MOVE", olddestpath, newdestpath
+
+    for sha, filename in dest_hashes.items():
+        if sha not in source_hashes:
+            yield "DELETE", dest_folder / filename
+```
+The **determine_actions()** function will be the core of our business logic, which says,
+“Given these two sets of hashes and filenames, what should we copy/move/delete?”. It
+takes simple data structures and returns simple data structures:
+
+- **Why Not Just Patch It Out?**
