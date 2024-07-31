@@ -457,3 +457,240 @@ The **determine_actions()** function will be the core of our business logic, whi
 takes simple data structures and returns simple data structures:
 
 ## Chapter4: Our First Use Case: Flask API and Service Layer
+
+In this chapter, we discuss the differences between orchestration logic, business logic,
+and interfacing code, and we introduce the Service Layer pattern to take care of
+orchestrating our workflows and defining the use cases of our system.
+
+Figure below shows what we’re aiming for: we’re going to add a Flask API that will talk
+to the service layer, which will serve as the entrypoint to our domain model. Because
+our service layer depends on the **AbstractRepository**, we can unit test it by using
+**FakeRepository** but run our production code using **SqlAlchemyRepository**.
+
+![](images/service_layer_added.png)
+
+The code for this chapter is in the [chapter_04_service_layer](https://github.com/cosmicpython/code/blob/chapter_04_service_layer/services.py)
+
+- **A First End-to-End Test**
+
+For now, we want to write one or maybe two tests that are going to exercise a “real”
+API endpoint (using HTTP) and talk to a real database. Let’s call them end-to-end
+tests because it’s one of the most self-explanatory names.
+
+```angular2html
+@pytest.mark.usefixtures("restart_api")
+def test_happy_path_returns_201_and_allocated_batch(add_stock):
+    sku, othersku = random_sku(), random_sku("other")
+    earlybatch = random_batchref(1)
+    laterbatch = random_batchref(2)
+    otherbatch = random_batchref(3)
+    add_stock(
+        [
+            (laterbatch, sku, 100, "2011-01-02"),
+            (earlybatch, sku, 100, "2011-01-01"),
+            (otherbatch, othersku, 100, None),
+        ]
+    )
+    data = {"orderid": random_orderid(), "sku": sku, "qty": 3}
+    url = config.get_api_url()
+
+    r = requests.post(f"{url}/allocate", json=data)
+
+    assert r.status_code == 201
+    assert r.json()["batchref"] == earlybatch
+```
+
+**random_sku()**, **random_batchref()**, and so on are little helper functions that
+generate randomized characters by using the uuid module. **add_stock** is a helper fixture that just hides away the details of manually inserting rows into the database using SQL.
+
+- **The Straightforward Implementation**
+
+Implementing things in the most obvious way, you might get something like this:
+
+```angular2html
+@app.route("/allocate", methods=['POST'])
+def allocate_endpoint():
+   session = get_session()
+   batches = repository.SqlAlchemyRepository(session).list()
+   line = model.OrderLine(
+   request.json['orderid'],
+   request.json['sku'],
+   request.json['qty'],
+   )
+   batchref = model.allocate(line, batches)
+   return jsonify({'batchref': batchref}), 201
+```
+
+But if we want to add more error handling to this API it should be changed as below:
+
+```angular2html
+def is_valid_sku(sku, batches):
+    return sku in {b.sku for b in batches}
+
+@app.route("/allocate", methods=['POST'])
+def allocate_endpoint():
+   session = get_session()
+   batches = repository.SqlAlchemyRepository(session).list()
+   line = model.OrderLine(
+     request.json['orderid'],
+     request.json['sku'],
+     request.json['qty'],
+   )
+   if not is_valid_sku(line.sku, batches):
+        return jsonify({'message': f'Invalid sku {line.sku}'}), 400
+   try:
+        batchref = model.allocate(line, batches)
+   except model.OutOfStock as e:
+        return jsonify({'message': str(e)}), 400
+   session.commit()
+   return jsonify({'batchref': batchref}), 201
+
+```
+But our Flask app is starting to look a bit unwieldy.
+
+- **Introducing a Service Layer, and Using FakeRepository to Unit Test It**
+
+If we look at what our Flask app is doing, there’s quite a lot of what we might call
+orchestration—fetching stuff out of our repository, validating our input against data‐
+base state, handling errors, and committing in the happy path. In the following we add service layer in TDD manner.
+
+Our fake repository, an in-memory collection of batches is as below:
+
+```angular2html
+class FakeRepository(repository.AbstractRepository):
+    def __init__(self, batches):
+        self._batches = set(batches)
+
+    def add(self, batch):
+        self._batches.add(batch)
+
+    def get(self, reference):
+        return next(b for b in self._batches if b.reference == reference)
+
+    def list(self):
+        return list(self._batches)
+```
+FakeRepository holds the Batch objects that will be used by our test. Unit testing with fakes at the service layer:
+
+```angular2html
+def test_returns_allocation():
+    line = model.OrderLine("o1", "COMPLICATED-LAMP", 10)
+    batch = model.Batch("b1", "COMPLICATED-LAMP", 100, eta=None)
+    repo = FakeRepository([batch])
+
+    result = services.allocate(line, repo, FakeSession())
+    assert result == "b1"
+
+
+def test_error_for_invalid_sku():
+    line = model.OrderLine("o1", "NONEXISTENTSKU", 10)
+    batch = model.Batch("b1", "AREALSKU", 100, eta=None)
+    repo = FakeRepository([batch])
+
+    with pytest.raises(services.InvalidSku, match="Invalid sku NONEXISTENTSKU"):
+        services.allocate(line, repo, FakeSession())
+```
+
+And finally we’ll write a service function that looks something like this (services.py):
+
+```angular2html
+class InvalidSku(Exception):
+    pass
+
+
+def is_valid_sku(sku, batches):
+    return sku in {b.sku for b in batches}
+
+
+def allocate(line: OrderLine, repo: AbstractRepository, session) -> str:
+    batches = repo.list()
+    if not is_valid_sku(line.sku, batches):
+        raise InvalidSku(f"Invalid sku {line.sku}")
+    batchref = model.allocate(line, batches)
+    session.commit()
+    return batchref
+```
+Our services module (services.py) will define an **allocate()** service-layer function. It will sit between our API layer and
+the **allocate()** domain service function from our domain model. Here We fetch some objects from the repository. We make some checks or assertions about the request against the current state of
+the world. We call a domain service and If all is well, we save/update any state we’ve changed. That last step is a little unsatisfactory at the moment, as our service layer is tightly
+coupled to our database layer. We’ll improve that in Chapter 6 with the **Unit of Work pattern**.
+
+- **Depend on Abstractions**
+
+Notice one more thing about our service-layer function:
+It depends on a repository. We’ve chosen to make the dependency explicit, and we’ve
+used the type hint to say that we depend on **AbstractRepository**. This means it’ll
+work both when the tests give it a **FakeRepository** and when the Flask app gives it a
+**SqlAlchemyRepository**. If you remember **“The Dependency Inversion Principle”** this is what we
+mean when we say we should “**depend on abstractions**.” Our high-level module, the
+**service layer**, depends on the **repository abstraction**.
+
+our Flask app now looks a lot
+cleaner:
+```angular2html
+@app.route("/allocate", methods=["POST"])
+def allocate_endpoint():
+    session = get_session()
+    repo = repository.SqlAlchemyRepository(session)
+    line = model.OrderLine(
+        request.json["orderid"], request.json["sku"], request.json["qty"],
+    )
+
+    try:
+        batchref = services.allocate(line, repo, session)
+    except (model.OutOfStock, services.InvalidSku) as e:
+        return {"message": str(e)}, 400
+
+    return {"batchref": batchref}, 201
+```
+
+We instantiate a database session and some repository objects. We extract the user’s commands from the web request and pass them to a
+domain service. We return some JSON responses with the appropriate status codes.
+
+The responsibilities of the Flask app are just standard web stuff: per-request session
+management, parsing information out of POST parameters, response status codes,
+and JSON. All the orchestration logic is in the use case/service layer, and the domain
+logic stays in the domain.
+
+- **Putting Things in Folders to See Where It All Belongs**
+As our application gets bigger, we’ll need to keep tidying our directory structure. The
+layout of our project gives us useful hints about what kinds of object we’ll find in each
+file. Here’s one way we could organize things:
+
+![](images/folders_structures.png)
+
+1- Let’s have a folder for our domain model. Currently that’s just one file, but for a
+more complex application, you might have one file per class; you might have
+helper parent classes for **Entity**, **ValueObject**, and **Aggregate**, and you might
+add an **exceptions.py** for domain-layer exceptions and, as you’ll see in Part II,
+**commands.py** and **events.py**.
+
+2- We’ll distinguish the service layer. Currently that’s just one file called **services.py**
+for our service-layer functions. You could add service-layer exceptions here, and
+as you’ll see in Chapter 5, we’ll add **unit_of_work.py**.
+
+3- Adapters is a nod to the ports and adapters terminology. This will fill up with any
+other abstractions around external I/O (e.g., a redis_client.py). Strictly speaking,
+you would call these secondary adapters or driven adapters, or sometimes inwardfacing adapters.
+
+4- Entrypoints are the places we drive our application from. In the official ports and
+adapters terminology, these are adapters too, and are referred to as primary, driv‐
+ing, or outward-facing adapters.
+
+- **The DIP in Action**
+
+Here are the dependencies tree in our app when we run tests and when we run the application.
+
+![](images/add_dependency.png)
+![](images/tests_dependency.png)
+![](images/runtime_dependency.png)
+
+But there are still some bits of awkwardness to tidy up:
+
+1- The service layer is still tightly coupled to the domain, because its API is
+expressed in terms of OrderLine objects. In Chapter 5, we’ll fix that and talk
+about the way that the service layer enables more productive TDD.
+
+2- The service layer is tightly coupled to a session object. In Chapter 6, we’ll introduce one more pattern that works closely with the Repository and Service Layer
+patterns, the Unit of Work pattern, and everything will be absolutely lovely. You’ll
+see!
