@@ -2,11 +2,15 @@
 
 Authors: Bob Gregory, Harry Percival
 
+![](images/book_first_page.png)
+
 <!-- TOC -->
 * [Architecture Patterns with Python: Enabling Test-Driven Development, Domain-Driven Design, and Event-Driven Microservices](#architecture-patterns-with-python-enabling-test-driven-development-domain-driven-design-and-event-driven-microservices)
   * [Introduction](#introduction)
   * [Chapter1: Domain Modeling](#chapter1-domain-modeling)
   * [Chapter2: Repository Pattern](#chapter2-repository-pattern)
+  * [Chapter3: A Brief Interlude: On Coupling and Abstractions](#chapter3-a-brief-interlude-on-coupling-and-abstractions)
+  * [Chapter4: Our First Use Case: Flask API and Service Layer](#chapter4-our-first-use-case-flask-api-and-service-layer)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -354,6 +358,7 @@ def sync(source, dest):
    for folder, _, files in os.walk(source):
      for fn in files:
        source_hashes[hash_file(Path(folder) / fn)] = fn
+
    seen = set() # Keep track of the files we've found in the target
    # Walk the target folder and get the filenames and hashes
    for folder, _, files in os.walk(dest):
@@ -368,6 +373,7 @@ def sync(source, dest):
        # move it to the correct path
        elif dest_hash in source_hashes and fn != source_hashes[dest_hash]:
          shutil.move(dest_path, Path(folder) / source_hashes[dest_hash])
+
    # for every file that appears in source but not target, copy the file to
    # the target
    for src_hash, fn in source_hashes.items():
@@ -450,4 +456,4 @@ The **determine_actions()** function will be the core of our business logic, whi
 “Given these two sets of hashes and filenames, what should we copy/move/delete?”. It
 takes simple data structures and returns simple data structures:
 
-- **Why Not Just Patch It Out?**
+## Chapter4: Our First Use Case: Flask API and Service Layer
