@@ -11,6 +11,7 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter2: Repository Pattern](#chapter2-repository-pattern)
   * [Chapter3: A Brief Interlude: On Coupling and Abstractions](#chapter3-a-brief-interlude-on-coupling-and-abstractions)
   * [Chapter4: Our First Use Case: Flask API and Service Layer](#chapter4-our-first-use-case-flask-api-and-service-layer)
+  * [Chapter5: TDD in High Gear and Low Gear](#chapter5-tdd-in-high-gear-and-low-gear)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -694,3 +695,231 @@ about the way that the service layer enables more productive TDD.
 2- The service layer is tightly coupled to a session object. In Chapter 6, we’ll introduce one more pattern that works closely with the Repository and Service Layer
 patterns, the Unit of Work pattern, and everything will be absolutely lovely. You’ll
 see!
+
+## Chapter5: TDD in High Gear and Low Gear
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_05_high_gear_low_gear)
+
+We’ve introduced the service layer to capture some of the additional orchestration
+responsibilities we need from a working application. The service layer helps us clearly
+define our use cases and the workflow for each: what we need to get from our repositories, what pre-checks and current state validation we should do, and what we save at
+the end. But currently, many of our unit tests operate at a lower level, acting directly on the
+model. In this chapter we’ll discuss the trade-offs involved in moving those tests up to
+the service-layer level, and some more general testing guidelines.
+
+- **Should Domain Layer Tests Move to the Service Layer?**
+
+Since we can test our software against the service layer, we don’t really need tests for the domain model anymore.
+Instead, we could rewrite all of the domain-level tests from Chapter 1 in terms of the service layer. here is an example:
+
+domain-layer test:
+
+```angular2html
+def test_prefers_current_stock_batches_to_shipments():
+   in_stock_batch = Batch("in-stock-batch", "RETRO-CLOCK", 100, eta=None)
+   shipment_batch = Batch("shipment-batch", "RETRO-CLOCK", 100, eta=tomorrow)
+   line = OrderLine("oref", "RETRO-CLOCK", 10)
+
+   allocate(line, [in_stock_batch, shipment_batch])
+
+   assert in_stock_batch.available_quantity == 90
+   assert shipment_batch.available_quantity == 100
+
+```
+service-layer test:
+
+```angular2html
+def test_prefers_warehouse_batches_to_shipments():
+   in_stock_batch = Batch("in-stock-batch", "RETRO-CLOCK", 100, eta=None)
+   shipment_batch = Batch("shipment-batch", "RETRO-CLOCK", 100, eta=tomorrow)
+   repo = FakeRepository([in_stock_batch, shipment_batch])
+   session = FakeSession()
+   line = OrderLine('oref', "RETRO-CLOCK", 10)
+
+  services.allocate(line, repo, session)
+
+  assert in_stock_batch.available_quantity == 90
+  assert shipment_batch.available_quantity == 100
+
+```
+
+Tests are supposed to help us change our system fearlessly, but often we see teams
+writing too many tests against their domain model. This causes problems when they
+come to change their codebase and find that they need to update tens or even hundreds of unit tests.
+
+As we get further into the book, you’ll see how the service layer forms an API for our
+system that we can drive in multiple ways. Testing against this API reduces the
+amount of code that we need to change when we refactor our domain model. If we
+restrict ourselves to testing only against the service layer, we won’t have any tests that
+directly interact with “private” methods or attributes on our model objects, which
+leaves us freer to refactor them.
+
+- **On Deciding What Kind of Tests to Write**
+
+You might be asking yourself, “Should I rewrite all my unit tests, then? Is it wrong to
+write tests against the domain model?” To answer those questions, it’s important to
+understand the trade-off between coupling and design feedback (see Figure below).
+
+![](images/test_spectrum.png)
+
+We only get that feedback, though, when we’re working closely with the target code.
+A test for the HTTP API tells us nothing about the fine-grained design of our objects,
+because it sits at a much higher level of abstraction. On the other hand, we can rewrite our entire application and, so long as we don’t
+change the URLs or request formats, our HTTP tests will continue to pass. This gives
+us confidence that large-scale changes, like changing the database schema, haven’t
+broken our code.
+
+
+- **High and Low Gear**
+
+When starting a new project or when hitting a particularly gnarly problem, we will
+drop back down to writing tests against the domain model so we get better feedback
+and executable documentation of our intent.
+
+The metaphor we use is that of shifting gears. When starting a journey, the bicycle
+needs to be in a low gear so that it can overcome inertia. Once we’re off and running,
+we can go faster and more efficiently by changing into a high gear; but if we suddenly
+encounter a steep hill or are forced to slow down by a hazard, we again drop down to
+a low gear until we can pick up speed again.
+
+- **Fully Decoupling the Service-Layer Tests from the Domain**
+
+We still have direct dependencies on the domain in our service-layer tests, because we
+use domain objects to set up our test data and to invoke our service-layer functions.
+To have a service layer that’s fully decoupled from the domain, we need to rewrite its
+API to work in terms of primitives.
+Our service layer currently takes an OrderLine domain object:
+
+```angular2html
+def allocate(line: OrderLine, repo: AbstractRepository, session) -> str:
+```
+How would it look if its parameters were all primitive types?
+
+```angular2html
+def allocate(orderid: str, sku: str, qty: int, repo: AbstractRepository, session) -> str:
+```
+
+Tests now use primitives in function call
+
+```angular2html
+def test_returns_allocation():
+   batch = model.Batch("batch1", "COMPLICATED-LAMP", 100, eta=None)
+   repo = FakeRepository([batch])
+
+   result = services.allocate("o1", "COMPLICATED-LAMP", 10, repo, FakeSession())
+   assert result == "batch1"
+
+```
+But our tests still depend on the domain, because we still manually instantiate **Batch**
+objects. So, if one day we decide to massively refactor how our Batch model works,
+we’ll have to change a bunch of tests.
+
+- **Adding a Missing Service**
+
+We could go one step further, though. If we had a service to add stock, we could use
+that and make our service-layer tests fully expressed in terms of the service layer’s
+official use cases, removing all dependencies on the domain:
+
+```angular2html
+def add_batch(
+        ref: str, sku: str, qty: int, eta: Optional[date],
+        repo: AbstractRepository, session):
+     repo.add(model.Batch(ref, sku, qty, eta))
+     session.commit()
+```
+Should you write a new service just because it would help remove
+dependencies from your tests? Probably not. But in this case, we
+almost definitely would need an **add_batch** service one day
+anyway.
+
+That now allows us to rewrite all of our service-layer tests purely in terms of the services themselves, using only primitives, and without any dependencies on the model:
+
+```angular2html
+
+def test_allocate_returns_allocation():
+    repo, session = FakeRepository([]), FakeSession()
+    services.add_batch("batch1", "COMPLICATED-LAMP", 100, None, repo, session)
+    result = services.allocate("o1", "COMPLICATED-LAMP", 10, repo, session)
+    assert result == "batch1"
+
+def test_allocate_errors_for_invalid_sku():
+    repo, session = FakeRepository([]), FakeSession()
+    services.add_batch("b1", "AREALSKU", 100, None, repo, session)
+
+    with pytest.raises(services.InvalidSku, match="Invalid sku NONEXISTENTSKU"):
+        services.allocate("o1", "NONEXISTENTSKU", 10, repo, FakeSession())
+
+```
+
+This is a really nice place to be in. Our service-layer tests depend on only the service
+layer itself, leaving us completely free to refactor the model as we see fit.
+
+- **Carrying the Improvement Through to the E2E Tests**
+
+In the same way that adding **add_batch** helped decouple our service-layer tests from
+the model, adding an API endpoint to add a batch would remove the need for the
+ugly add_stock fixture, and our E2E tests could be free of those hardcoded SQL queries and the direct dependency on the database
+
+API for adding a batch:
+
+```angular2html
+@app.route("/add_batch", methods=["POST"])
+def add_batch():
+    session = get_session()
+    repo = repository.SqlAlchemyRepository(session)
+    eta = request.json["eta"]
+    if eta is not None:
+        eta = datetime.fromisoformat(eta).date()
+    services.add_batch(
+        request.json["ref"],
+        request.json["sku"],
+        request.json["qty"],
+        eta,
+        repo,
+        session,
+    )
+    return "OK", 201
+```
+
+Now the API test would be as below:
+
+```angular2html
+def post_to_add_batch(ref, sku, qty, eta):
+    url = config.get_api_url()
+    r = requests.post(
+        f"{url}/add_batch", json={"ref": ref, "sku": sku, "qty": qty, "eta": eta}
+    )
+    assert r.status_code == 201
+
+
+@pytest.mark.usefixtures("postgres_db")
+@pytest.mark.usefixtures("restart_api")
+def test_happy_path_returns_201_and_allocated_batch():
+    sku, othersku = random_sku(), random_sku("other")
+    earlybatch = random_batchref(1)
+    laterbatch = random_batchref(2)
+    otherbatch = random_batchref(3)
+    post_to_add_batch(laterbatch, sku, 100, "2011-01-02")
+    post_to_add_batch(earlybatch, sku, 100, "2011-01-01")
+    post_to_add_batch(otherbatch, othersku, 100, None)
+    data = {"orderid": random_orderid(), "sku": sku, "qty": 3}
+
+    url = config.get_api_url()
+    r = requests.post(f"{url}/allocate", json=data)
+
+    assert r.status_code == 201
+    assert r.json()["batchref"] == earlybatch
+
+```
+
+- **Recap:**
+
+1- Aim for one end-to-end test per feature
+
+2- Write the bulk of your tests against the service layer
+
+3- Maintain a small core of tests written against your domain mode
+
+4- Error handling counts as a feature
+
+5- Express your service layer in terms of primitives rather than domain objects.
+
