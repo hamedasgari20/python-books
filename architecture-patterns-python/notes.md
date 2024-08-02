@@ -108,6 +108,8 @@ here is our UML and domain model:
 
 ![](images/uml.png)
 
+todo: explain _purchased_quantity and allocations with more details
+
 ```angular2html
 
 @dataclass(frozen=True)
@@ -164,6 +166,8 @@ class OrderLine:
     qty: int
 
 ```
+
+todo: Why OrderLine is value object? How can we save its related data in DB?
 
 - **Entities**
 
@@ -285,6 +289,9 @@ def allocate_endpoint():
      session.commit()
      return 201
 ```
+
+todo: What is the advantage of the mentioned approach? Explain its functionality
+
  - **What Is a Port and What Is an Adapter, in Python?** (Perplexity is used for better definition in this section)
 
 In the context of the ports and adapters architectural pattern, a port is an abstract interface that defines how the application interacts with external components, while an adapter is a concrete implementation of that interface that handles the communication with the external component.
@@ -345,6 +352,9 @@ def hash_file(path):
             buf = file.read(BLOCKSIZE)
     return hasher.hexdigest()
 ```
+
+todo: explain more this method
+
 Our first hackish approach looks something like this:
 
 ```angular2html
@@ -381,6 +391,8 @@ def sync(source, dest):
      if src_hash not in seen:
        shutil.copy(Path(source) / fn, Path(dest) / fn)
 ```
+todo: explain more this method
+
 
 Fantastic! We have some code and it looks OK. The problem is that our domain
 logic, “figure out the difference between two directories,” is tightly coupled to the I/O
@@ -457,6 +469,8 @@ The **determine_actions()** function will be the core of our business logic, whi
 “Given these two sets of hashes and filenames, what should we copy/move/delete?”. It
 takes simple data structures and returns simple data structures:
 
+todo: Explain this method with more details
+
 ## Chapter4: Our First Use Case: Flask API and Service Layer
 
 In this chapter, we discuss the differences between orchestration logic, business logic,
@@ -467,6 +481,8 @@ Figure below shows what we’re aiming for: we’re going to add a Flask API tha
 to the service layer, which will serve as the entrypoint to our domain model. Because
 our service layer depends on the **AbstractRepository**, we can unit test it by using
 **FakeRepository** but run our production code using **SqlAlchemyRepository**.
+
+todo: Where is FakeRepository come from?
 
 ![](images/service_layer_added.png)
 
@@ -685,6 +701,8 @@ Here are the dependencies tree in our app when we run tests and when we run the 
 ![](images/add_dependency.png)
 ![](images/tests_dependency.png)
 ![](images/runtime_dependency.png)
+
+todo: explain more details about these figures and DIP
 
 But there are still some bits of awkwardness to tidy up:
 
