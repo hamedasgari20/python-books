@@ -12,6 +12,7 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter3: A Brief Interlude: On Coupling and Abstractions](#chapter3-a-brief-interlude-on-coupling-and-abstractions)
   * [Chapter4: Our First Use Case: Flask API and Service Layer](#chapter4-our-first-use-case-flask-api-and-service-layer)
   * [Chapter5: TDD in High Gear and Low Gear](#chapter5-tdd-in-high-gear-and-low-gear)
+  * [Chapter6: Unit of Work Pattern](#chapter6-unit-of-work-pattern)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
