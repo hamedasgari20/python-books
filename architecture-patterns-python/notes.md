@@ -941,3 +941,249 @@ def test_happy_path_returns_201_and_allocated_batch():
 
 5- Express your service layer in terms of primitives rather than domain objects.
 
+
+## Chapter6: Unit of Work Pattern
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_06_uow)
+
+In this chapter we’ll introduce the final piece of the puzzle that ties together the
+Repository and Service Layer patterns: the **Unit of Work pattern**.
+
+If the **Repository pattern** is our abstraction over the idea of persistent storage, the
+**Unit of Work (UoW)** pattern is our abstraction over the idea of atomic operations. It
+will allow us to finally and fully decouple our service layer from the data layer.
+
+Figure below shows that, currently, a lot of communication occurs across the layers of
+our infrastructure: the API talks directly to the database layer to start a session, it
+talks to the repository layer to initialize SQLAlchemyRepository, and it talks to the
+service layer to ask it to allocate. **Without UoW: API talks directly to three layers**
+
+![](images/without_uow.png)
+
+Figure below shows our target state. The Flask API now does only two things: it initializes a unit of work, and it invokes a service. The service collaborates with the UoW, but neither the service
+function itself nor Flask now needs to talk directly to the database. And we’ll do it all using a lovely piece of Python syntax, a context manager.
+
+![](images/with_uow.png)
+
+- **The Unit of Work Collaborates with the Repository**
+
+Here’s how the service layer will look when we’re finished:
+
+```angular2html
+def allocate(
+    orderid: str, sku: str, qty: int,
+    uow: unit_of_work.AbstractUnitOfWork) -> str:
+    line = OrderLine(orderid, sku, qty)
+    with uow:
+        batches = uow.batches.list()
+        if not is_valid_sku(line.sku, batches):
+            raise InvalidSku(f"Invalid sku {line.sku}")
+        batchref = model.allocate(line, batches)
+        uow.commit()
+    return batchref
+
+```
+We’ll start a UoW as a context manager. **uow.batches** is the batches repo, so the UoW provides us access to our permanent storage.
+When we’re done, we commit or roll back our work, using the **UoW**.
+
+- **Test-Driving a UoW with Integration Tests**
+
+Here are our integration tests for the UOW:
+
+```angular2html
+def test_uow_can_retrieve_a_batch_and_allocate_to_it(session_factory):
+    session = session_factory()
+    insert_batch(session, "batch1", "HIPSTER-WORKBENCH", 100, None)
+    session.commit()
+
+    uow = unit_of_work.SqlAlchemyUnitOfWork(session_factory)
+    with uow:
+        batch = uow.batches.get(reference="batch1")
+        line = model.OrderLine("o1", "HIPSTER-WORKBENCH", 10)
+        batch.allocate(line)
+        uow.commit()
+
+    batchref = get_allocated_batch_ref(session, "o1", "HIPSTER-WORKBENCH")
+    assert batchref == "batch1"
+```
+We initialize the UoW by using our custom session factory and get back a uow
+object to use in our with block. The UoW gives us access to the batches repository via **uow.batches**. We call **commit()** on it when we’re done.
+
+- **Unit of Work and Its Context Manager**
+
+Abstract UoW context manager:
+
+```angular2html
+class AbstractUnitOfWork(abc.ABC):
+    batches: repository.AbstractRepository
+
+    def __enter__(self) -> AbstractUnitOfWork:
+        return self
+
+    def __exit__(self, *args):
+        self.rollback()
+
+    @abc.abstractmethod
+    def commit(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def rollback(self):
+        raise NotImplementedError
+```
+The UoW provides an attribute called **batches**, which will give us access to the
+batches repository. If you’ve never seen a context manager, __enter__ and __exit__ are the two
+magic methods that execute when we enter the with block and when we exit it,
+respectively. They’re our setup and teardown phases. We’ll call this method to explicitly commit our work when we’re ready.
+If we don’t commit, or if we exit the context manager by raising an error, we do a **rollback**.
+
+Here is SQLAlchemy UoW:
+```angular2html
+class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
+    def __init__(self, session_factory=DEFAULT_SESSION_FACTORY):
+        self.session_factory = session_factory
+
+    def __enter__(self):
+        self.session = self.session_factory()  # type: Session
+        self.batches = repository.SqlAlchemyRepository(self.session)
+        return super().__enter__()
+
+    def __exit__(self, *args):
+        super().__exit__(*args)
+        self.session.close()
+
+    def commit(self):
+        self.session.commit()
+
+    def rollback(self):
+        self.session.rollback()
+```
+The module defines a default session factory that will connect to Postgres, but we
+allow that to be overridden in our integration tests so that we can use SQLite
+instead. The __enter__ method is responsible for starting a database session and instantiating a real repository that can use that session.
+We close the session on exit. Finally, we provide concrete **commit()** and **rollback()** methods that use our
+database session.
+
+- **Fake Unit of Work for Testing**
+
+Here’s how we use a fake UoW in our service-layer tests:
+
+```angular2html
+class FakeRepository(repository.AbstractRepository):
+    def __init__(self, batches):
+        self._batches = set(batches)
+
+    def add(self, batch):
+        self._batches.add(batch)
+
+    def get(self, reference):
+        return next(b for b in self._batches if b.reference == reference)
+
+    def list(self):
+        return list(self._batches)
+
+class FakeUnitOfWork(unit_of_work.AbstractUnitOfWork):
+    def __init__(self):
+        self.batches = FakeRepository([])
+        self.committed = False
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        pass
+```
+
+**FakeUnitOfWork** and **FakeRepository** are tightly coupled, just like the real UnittofWork and Repository classes. That’s fine because we recognize that the objects
+are collaborators.
+
+Here is some tests in service layer:
+
+```angular2html
+def test_add_batch():
+    uow = FakeUnitOfWork()
+    services.add_batch("b1", "CRUNCHY-ARMCHAIR", 100, None, uow)
+    assert uow.batches.get("b1") is not None
+    assert uow.committed
+
+
+def test_allocate_returns_allocation():
+    uow = FakeUnitOfWork()
+    services.add_batch("batch1", "COMPLICATED-LAMP", 100, None, uow)
+    result = services.allocate("o1", "COMPLICATED-LAMP", 10, uow)
+    assert result == "batch1"
+```
+
+In our tests, we can instantiate a UoW and pass it to our service layer, rather than
+passing a repository and a session. This is considerably less cumbersome.
+
+- **Using the UoW in the Service Layer**
+
+Here’s what our new service layer looks like:
+
+```angular2html
+def is_valid_sku(sku, batches):
+    return sku in {b.sku for b in batches}
+
+
+def add_batch(
+    ref: str, sku: str, qty: int, eta: Optional[date],
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    with uow:
+        uow.batches.add(model.Batch(ref, sku, qty, eta))
+        uow.commit()
+
+
+def allocate(
+    orderid: str, sku: str, qty: int,
+    uow: unit_of_work.AbstractUnitOfWork,
+) -> str:
+    line = OrderLine(orderid, sku, qty)
+    with uow:
+        batches = uow.batches.list()
+        if not is_valid_sku(line.sku, batches):
+            raise InvalidSku(f"Invalid sku {line.sku}")
+        batchref = model.allocate(line, batches)
+        uow.commit()
+    return batchref
+```
+
+Our service layer now has only the one dependency, once again on an **abstract UoW**.
+
+- **Examples: Using UoW to Group Multiple Operations into an Atomic Unit**
+
+Here are a few examples showing the Unit of Work pattern in use. You can see how it
+leads to simple reasoning about what blocks of code happen together.
+
+- **Example 1: Reallocate**
+
+Suppose we want to be able to deallocate and then reallocate orders:
+
+```angular2html
+def reallocate(line: OrderLine, uow: AbstractUnitOfWork) -> str:
+   with uow:
+     batch = uow.batches.get(sku=line.sku)
+     if batch is None:
+       raise InvalidSku(f'Invalid sku {line.sku}')
+     batch.deallocate(line)
+     allocate(line)
+     uow.commit()
+```
+If **deallocate()** fails, we don’t want to call **allocate()**, obviously. And, If **allocate()** fails, we probably don’t want to actually commit the **deallocate()** either.
+
+- **Example 2: Change Batch Quantity**
+
+Our shipping company gives us a call to say that one of the container doors opened,
+and half our sofas have fallen into the Indian Ocean. Oops!
+
+```angular2html
+def change_batch_quantity(batchref: str, new_qty: int, uow: AbstractUnitOfWork):
+   with uow:
+     batch = uow.batches.get(reference=batchref)
+     batch.change_purchased_quantity(new_qty)
+     while batch.available_quantity < 0:
+       line = batch.deallocate_one()
+     uow.commit()
+```
+Here we may need to deallocate any number of lines. If we get a failure at any
+stage, we probably want to commit none of the changes.
