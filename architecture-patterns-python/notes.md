@@ -13,6 +13,8 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter4: Our First Use Case: Flask API and Service Layer](#chapter4-our-first-use-case-flask-api-and-service-layer)
   * [Chapter5: TDD in High Gear and Low Gear](#chapter5-tdd-in-high-gear-and-low-gear)
   * [Chapter6: Unit of Work Pattern](#chapter6-unit-of-work-pattern)
+  * [Chapter7: Aggregates and Consistency Boundaries](#chapter7-aggregates-and-consistency-boundaries)
+* [Event-Driven Architecture](#event-driven-architecture)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -1188,3 +1190,291 @@ def change_batch_quantity(batchref: str, new_qty: int, uow: AbstractUnitOfWork):
 ```
 Here we may need to deallocate any number of lines. If we get a failure at any
 stage, we probably want to commit none of the changes.
+
+## Chapter7: Aggregates and Consistency Boundaries
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_07_aggregate)
+
+In this chapter, we’d like to revisit our domain model to talk about invariants and
+constraints, and see how our domain objects can maintain their own internal consistency, both conceptually and in persistent storage.
+
+Figure below shows a preview of where we’re headed: we’ll introduce a new model object
+called **Product** to wrap multiple batches, and we’ll make the old **allocate()** domain
+service available as a method on **Product** instead.
+
+![](images/product_aggregate.png)
+
+- **Invariants, Constraints, and Consistency**
+
+constraint is a rule that restricts the possible states our model can get into, while an **invariant** is defined a little more
+precisely as a condition that is always true. If we were writing a hotel-booking system, we might have the constraint that double
+bookings are not allowed. This supports the invariant that a room cannot have more
+than one booking for the same night. Let’s look at a couple of concrete examples from our business requirements; we’ll start
+with this one: **An order line can be allocated to only one batch at a time.**
+
+In a single-threaded, single-user application, it’s relatively easy for us to maintain this
+invariant. We can just allocate stock one line at a time, and raise an error if there’s no
+stock available. This gets much harder when we introduce the idea of concurrency. Suddenly we
+might be allocating stock for multiple order lines simultaneously. We usually solve this problem by applying **locks** to our database tables. This prevents
+two operations from happening simultaneously on the same row or same table.
+
+As we start to think about scaling up our app, we realize that our model of allocating
+lines against all available batches may not scale. If we process tens of thousands of
+orders per hour, and hundreds of thousands of order lines, we can’t hold a lock over
+the whole **batches** table for every single one we’ll get deadlocks or performance
+problems at the very least.
+
+- **What Is an Aggregate?**
+
+The **Aggregate** pattern is a design pattern from the DDD community that helps us to
+resolve this tension. An **aggregate** is just a domain object that contains other domain
+objects and lets us treat the whole collection as a single unit. it’s a good idea to nominate some entities to be the single entrypoint for modi‐
+fying their related objects. It makes the system conceptually simpler and easy to
+reason about if you nominate some objects to be in charge of consistency for the others.
+
+For example, if we’re building a shopping site, the **Cart** might make a good aggregate:
+it’s a collection of items that we can treat as a single unit. Importantly, we want to load
+the entire basket as a single blob from our data store. We don’t want two requests to
+modify the basket at the same time, or we run the risk of weird concurrency errors.
+Instead, we want each change to the basket to run in a single database transaction. We don’t want to modify multiple baskets in a transaction, because there’s no use case
+for changing the baskets of several customers at the same time. Each basket is a single
+consistency boundary responsible for maintaining its own invariants.So, An **AGGREGATE** is a cluster of associated objects that we treat as a unit for the purpose of data changes.
+our aggregate has a root entity (the Cart) that encapsulates access to items.
+Each item has its own identity, but other parts of the system will always refer to the Cart only as an indivisible whole.
+
+- **Choosing an Aggregate**
+
+What aggregate should we use for our system? The choice is somewhat arbitrary, but
+it’s important. The aggregate will be the boundary where we make sure every operation ends in a consistent state. This helps us to reason about our software and prevent
+weird race issues.
+
+The following example is constructed by **ChatGPT**.
+
+- **Simple Example: Shopping Cart**
+
+Consider a simple e-commerce system with a **ShoppingCart** aggregate. Here's how the aggregate ensures consistency:
+
+- **Entities and Value Objects:**
+
+1- **ShoppingCart (Aggregate Root):** Contains items, a total cost, and methods to add or remove items.
+
+2- **CartItem (Entity within Aggregate):** Represents an individual item in the cart, including product details and quantity.
+
+3- **ProductID (Value Object):** A unique identifier for a product.
+
+- **Business Rule (Invariant)**
+
+The total cost of the cart must always equal the sum of the costs of all items in the cart.
+
+```angular2html
+from pydantic import BaseModel
+from typing import List, Dict
+
+class ProductID(BaseModel):
+    id: str
+
+class CartItem(BaseModel):
+    product_id: ProductID
+    quantity: int
+    price_per_unit: float
+    
+    def total_price(self):
+        return self.quantity * self.price_per_unit
+
+class ShoppingCart(BaseModel):
+    items: Dict[str, CartItem]  # key is ProductID.id
+    
+    def add_item(self, product_id: ProductID, quantity: int, price_per_unit: float):
+        if product_id.id in self.items:
+            self.items[product_id.id].quantity += quantity
+        else:
+            self.items[product_id.id] = CartItem(product_id=product_id, quantity=quantity, price_per_unit=price_per_unit)
+        self.check_invariants()
+    
+    def remove_item(self, product_id: ProductID, quantity: int):
+        if product_id.id in self.items:
+            if quantity >= self.items[product_id.id].quantity:
+                del self.items[product_id.id]
+            else:
+                self.items[product_id.id].quantity -= quantity
+        self.check_invariants()
+    
+    def total_cost(self):
+        return sum(item.total_price() for item in self.items.values())
+    
+    def check_invariants(self):
+        if self.total_cost() < 0:
+            raise ValueError("Total cost cannot be negative.")
+
+```
+
+In this example:
+
+1- The **ShoppingCart** class (aggregate root) manages all modifications to the cart's contents.
+
+2- It ensures the invariant (total cost is correct) is maintained after any changes such as adding or removing items.
+
+3- All interactions with **CartItem** objects go through the **ShoppingCart**, which controls and checks the consistency of its internal state.
+This model allows the application to maintain consistent rules about how products are added or removed, ensuring data integrity and business rule enforcement within the shopping cart system.
+
+(According to the previous rule) only Aggregate Root can be directly retrieved from the database by Query. In other words, a Repository is defined for each Aggregate Root, and other objects cannot be retrieved directly and must be retrieved by the corresponding Aggregate Root. Also, direct access to save or edit an entity inside an Aggregate is meaningless, and database transactions are meaningful at the level of an Aggregate.
+
+- **Aggregates, Bounded Contexts, and Microservices**
+
+One of the most important contributions from Evans and the DDD community is the concept of **bounded contexts**.
+In essence, this was a reaction against attempts to capture entire businesses into a single model. The word customer means different things to people in sales, customer ser‐
+vice, logistics, support, and so on. Attributes needed in one context are irrelevant in
+another; more perniciously, concepts with the same name can have entirely different
+meanings in different contexts. Rather than trying to build a single model (or class, or
+database) to capture all the use cases, it’s better to have several models, draw boundaries around each context, and handle the translation between different contexts
+explicitly. This concept translates very well to the world of microservices, where each microservice is free to have its own concept of “customer” and its own rules for translating that
+to and from other microservices it integrates with. Whether or not you have a microservices architecture, a key consideration in choos‐
+ing your aggregates is also choosing the bounded context that they will operate in. By
+restricting the context, you can keep your number of aggregates low and their size
+manageable.
+
+- **One Aggregate = One Repository**
+
+Once you define certain entities to be aggregates, we need to apply the rule that they
+are the only entities that are publicly accessible to the outside world. In other words,
+the only repositories we are allowed should be repositories that return aggregates.
+
+In our case, we’ll switch from **BatchRepository** to **ProductRepository**:
+
+```angular2html
+class AbstractRepository(abc.ABC):
+    @abc.abstractmethod
+    def add(self, product: model.Product):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get(self, sku) -> model.Product:
+        raise NotImplementedError
+
+
+class AbstractUnitOfWork(abc.ABC):
+    products: repository.AbstractRepository
+
+    def __enter__(self) -> AbstractUnitOfWork:
+        return self
+
+    def __exit__(self, *args):
+        self.rollback()
+
+    @abc.abstractmethod
+    def commit(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def rollback(self):
+        raise NotImplementedError
+```
+
+Service layer
+
+```angular2html
+def add_batch(
+    ref: str, sku: str, qty: int, eta: Optional[date],
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    with uow:
+        product = uow.products.get(sku=sku)
+        if product is None:
+            product = model.Product(sku, batches=[])
+            uow.products.add(product)
+        product.batches.append(model.Batch(ref, sku, qty, eta))
+        uow.commit()
+
+
+def allocate(
+    orderid: str, sku: str, qty: int,
+    uow: unit_of_work.AbstractUnitOfWork,
+) -> str:
+    line = OrderLine(orderid, sku, qty)
+    with uow:
+        product = uow.products.get(sku=line.sku)
+        if product is None:
+            raise InvalidSku(f"Invalid sku {line.sku}")
+        batchref = product.allocate(line)
+        uow.commit()
+    return batchref
+```
+
+- **What About Performance?**
+
+We’ve mentioned a few times that we’re modeling with aggregates because we want to
+have high-performance software, but here we are loading all the batches when we
+only need one. You might expect that to be inefficient, but there are a few reasons
+why we’re comfortable here.
+
+First, we’re purposefully modeling our data so that we can make a single query to the
+database to read, and a single update to persist our changes. This tends to perform
+much better than systems that issue lots of ad hoc queries. In systems that don’t
+model this way, we often find that transactions slowly get longer and more complex
+as the software evolves.
+
+Second, we expect to have only 20 or so batches of each product at a time. Once a batch
+is used up, we can discount it from our calculations. This means that the amount of
+data we’re fetching shouldn’t get out of control over time.
+
+The Aggregate pattern is designed to help manage
+some technical constraints around consistency and performance. There isn’t one correct aggregate, and we should feel comfortable changing our minds if we find our
+boundaries are causing performance woes.
+
+- **Optimistic Concurrency with Version Numbers**
+
+will be added soon ...
+
+- **Implementation Options for Version Numbers**
+
+will be added soon ...
+
+- **Testing for Our Data Integrity Rules**
+
+will be added soon ...
+
+- **Pessimistic Concurrency Control Example: SELECT FOR UPDATE**
+
+will be added soon ...
+
+- **Wrap-Up**
+
+we explicitly model an object as being the main
+entrypoint to some subset of our model, and as being in charge of enforcing the
+invariants and business rules that apply across all of those objects. Choosing the right aggregate is key, and it’s a decision you may revisit over time.
+
+1- Aggregates are your entrypoints into the domain model
+
+2- Aggregates are in charge of a consistency boundary
+
+
+- **Part I Recap**
+
+![](images/component_diagram_end_part_one.png)
+
+We’ve decoupled the infrastructural parts of our system, like the database and API
+handlers, so that we can plug them into the outside of our application. This helps us
+to keep our codebase well organized and stops us from building a big ball of mud.
+
+By applying the dependency inversion principle, and by using ports-and-adapters inspired patterns like Repository and Unit of Work, we’ve made it possible to do TDD
+in both high gear and low gear and to maintain a healthy test pyramid. We can test
+our system edge to edge, and the need for integration and end-to-end tests is kept to a
+minimum.
+
+Lastly, we’ve talked about the idea of consistency boundaries. We don’t want to lock
+our entire system whenever we make a change, so we have to choose which parts are
+consistent with one another.
+
+For a small system, this is everything you need to go and play with the ideas of
+domain-driven design. You now have the tools to build database-agnostic domain
+models that represent the shared language of your business experts. Hurrah!
+
+At the risk of laboring the point—we’ve been at pains to point out
+that each pattern comes at a cost. Each layer of indirection has a
+price in terms of complexity and duplication in our code and will
+be confusing to programmers who’ve never seen these patterns
+before. If your app is essentially a simple CRUD wrapper around a
+database and isn’t likely to be anything more than that in the foreseeable future, you don’t need these patterns. Go ahead and use
+Django, and save yourself a lot of bother.
+
+
+# Event-Driven Architecture
