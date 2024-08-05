@@ -15,6 +15,7 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter6: Unit of Work Pattern](#chapter6-unit-of-work-pattern)
   * [Chapter7: Aggregates and Consistency Boundaries](#chapter7-aggregates-and-consistency-boundaries)
 * [Event-Driven Architecture](#event-driven-architecture)
+  * [Chapter8: Events and the Message Bus](#chapter8-events-and-the-message-bus)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -1478,3 +1479,344 @@ Django, and save yourself a lot of bother.
 
 
 # Event-Driven Architecture
+
+In Part II, we’ll show how the techniques from Part I can be extended to distributed
+systems. We’ll zoom out to look at how we can compose a system from many small
+components that interact through asynchronous message passing. We’ll see how our Service Layer and Unit of Work patterns allow us to reconfigure
+our app to run as an asynchronous message processor, and how event-driven systems
+help us to decouple aggregates and applications from one another.
+
+## Chapter8: Events and the Message Bus
+
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_08_events_and_message_bus)
+
+Our example will be a typical notification requirement: when we can’t allocate an
+order because we’re out of stock, we should alert the buying team. They’ll go and fix
+the problem by buying more stock, and all will be well. For a first version, our product owner says we can just send the alert by email.
+
+We’ll start by doing the simplest, most expeditious thing, and talk about why it’s
+exactly this kind of decision that leads us to the Big Ball of Mud. Then we’ll show how to use the **Domain Events** pattern to separate side effects from
+our use cases, and how to use a simple **Message Bus pattern** for triggering behavior
+based on those events. We’ll show a few options for creating those events and how to
+pass them to the message bus, and finally we’ll show how the Unit of Work pattern
+can be modified to connect the two together elegantly, as previewed in Figure below.
+
+![](images/events_flowing.png)
+
+- **First, Let’s Avoid Making a Mess of Our Web Controllers**
+
+So. Email alerts when we run out of stock. When we have new requirements like ones
+that really have nothing to do with the core domain, it’s all too easy to start dumping
+these things into our web controllers.
+
+```angular2html
+@app.route("/allocate", methods=['POST'])
+def allocate_endpoint():
+   line = model.OrderLine(
+   request.json['orderid'],
+   request.json['sku'],
+   request.json['qty'],
+   )
+   try:
+     uow = unit_of_work.SqlAlchemyUnitOfWork()
+     batchref = services.allocate(line, uow)
+   except (model.OutOfStock, services.InvalidSku) as e:
+     send_mail(
+     'out of stock',
+     'stock_admin@made.com',
+     f'{line.orderid} - {line.sku}')
+     return jsonify({'message': str(e)}), 400
+   return jsonify({'batchref': batchref}), 201
+
+```
+But Sending email isn’t the job of our HTTP layer, and we’d like to be able to unit test
+this new feature.
+
+- **And Let’s Not Make a Mess of Our Model Either**
+
+Assuming we don’t want to put this code into our web controllers, because we want
+them to be as thin as possible, we may look at putting it right at the source, in the
+model:
+
+```angular2html
+def allocate(self, line: OrderLine) -> str:
+   try:
+     batch = next(
+     b for b in sorted(self.batches) if b.can_allocate(line)
+     )
+     #...
+   except StopIteration:
+     email.send_mail('stock@made.com', f'Out of stock for {line.sku}')
+     raise OutOfStock(f'Out of stock for sku {line.sku}')
+```
+
+But that’s even worse! We don’t want our model to have any dependencies on infrastructure concerns like **email.send_mail**.
+The domain model’s job is to know that we’re out of stock, but the responsibility of
+sending an alert belongs elsewhere. We should be able to turn this feature on or off,
+or to switch to SMS notifications instead, without needing to change the rules of our
+domain model.
+
+- **Or the Service Layer!**
+
+The requirement “Try to allocate some stock, and send an email if it fails” is an example of workflow orchestration: it’s a set of steps that the system has to follow to
+achieve a goal.
+We’ve written a service layer to manage orchestration for us, but even here the feature
+feels out of place:
+
+```angular2html
+def allocate(
+   orderid: str, sku: str, qty: int,
+   uow: unit_of_work.AbstractUnitOfWork) -> str:
+   line = OrderLine(orderid, sku, qty)
+   with uow:
+     product = uow.products.get(sku=line.sku)
+     if product is None:
+       raise InvalidSku(f'Invalid sku {line.sku}')
+     try:
+       batchref = product.allocate(line)
+       uow.commit()
+       return batchref
+     except model.OutOfStock:
+       email.send_mail('stock@made.com', f'Out of stock for {line.sku}')
+       raise
+```
+
+Catching an exception and reraising it? It could be worse, but it’s definitely making us unhappy. Why is it so hard to find a suitable home for this code?
+
+- **Single Responsibility Principle**
+
+Really, this is a violation of the **single responsibility principle (SRP)** Our use case is
+allocation. Our endpoint, service function, and domain methods are all called
+**allocate**, not **allocate_and_send_mail_if_out_of_stock**.
+
+**Rule of thumb:** if you can’t describe what your function does
+without using words like “**then**” or “**and**,” you might be violating
+the SRP.
+
+To solve the problem, we’re going to split the orchestration into separate steps so that
+the different concerns don’t get tangled up
+ The domain model’s job is to know that
+we’re out of stock, but the responsibility of sending an alert belongs elsewhere. We
+should be able to turn this feature on or off, or to switch to SMS notifications instead,
+without needing to change the rules of our domain model.
+
+We’d also like to keep the service layer free of implementation details. We want to
+apply the dependency inversion principle to notifications so that our service layer
+depends on an abstraction, in the same way as we avoid depending on the database by
+using a unit of work.
+
+- **All Aboard the Message Bus!**
+
+The patterns we’re going to introduce here are **Domain Events** and the **Message Bus**.
+We can implement them in a few ways, so we’ll show a couple before settling on the
+one we like most.
+
+- **Events Are Simple Dataclasses**
+
+An **event** is a kind of **value object**. Events don’t have any behavior, because they’re pure
+data structures. We always name events in the language of the domain, and we think
+of them as part of our domain model. We could store them in model.py, but we may as well keep them in their own file.
+
+```angular2html
+from dataclasses import dataclass
+
+class Event:
+    pass
+
+@dataclass
+class OutOfStock(Event):
+    sku: str
+```
+
+Once we have a number of events, we’ll find it useful to have a parent class that
+can store common attributes. It’s also useful for type hints in our message bus, as
+you’ll see shortly. **dataclasses** are great for domain events too.
+
+- **The Model Raises Events**
+
+When our domain model records a fact that happened, we say it raises an event. Here’s what it will look like from the outside; if we ask Product to allocate but it can’t,
+it should raise an event:
+
+Test our aggregate to raise events:
+
+```angular2html
+def test_records_out_of_stock_event_if_cannot_allocate():
+    batch = Batch("batch1", "SMALL-FORK", 10, eta=today)
+    product = Product(sku="SMALL-FORK", batches=[batch])
+    product.allocate(OrderLine("order1", "SMALL-FORK", 10))
+
+    allocation = product.allocate(OrderLine("order2", "SMALL-FORK", 1))
+    assert product.events[-1] == events.OutOfStock(sku="SMALL-FORK")
+    assert allocation is None
+```
+
+Our aggregate will expose a new attribute called **.events** that will contain a list of
+facts about what has happened, in the form of **Event objects**.
+
+Here’s what the model looks like on the inside:
+
+```angular2html
+class Product:
+    def __init__(self, sku: str, batches: List[Batch], version_number: int = 0):
+        self.sku = sku
+        self.batches = batches
+        self.version_number = version_number
+        self.events = []  # type: List[events.Event]
+
+    def allocate(self, line: OrderLine) -> str:
+        try:
+            batch = next(b for b in sorted(self.batches) if b.can_allocate(line))
+            batch.allocate(line)
+            self.version_number += 1
+            return batch.reference
+        except StopIteration:
+            self.events.append(events.OutOfStock(line.sku))
+            return None
+```
+
+Here’s our new .events attribute in use. Rather than invoking some email-sending code directly, we record those events
+at the place they occur, using only the language of the domain. We’re also going to stop raising an exception for the out-of-stock case. The event
+will do the job the exception was doing.
+
+We’re actually addressing a code smell we had until now, which is
+that we were using exceptions for control flow. In general, if you’re
+implementing domain events, don’t raise exceptions to describe the
+same domain concept. As you’ll see later when we handle events in
+the Unit of Work pattern, it’s confusing to have to reason about
+events and exceptions together.
+
+- **The Message Bus Maps Events to Handlers**
+
+A message bus basically says, “When I see this event, I should invoke the following
+handler function.” In other words, it’s a simple publish-subscribe system. Handlers
+are subscribed to receive events, which we publish to the bus. It sounds harder than it
+is, and we usually implement it with a dict:
+
+```angular2html
+def handle(event: events.Event):
+    for handler in HANDLERS[type(event)]:
+        handler(event)
+
+
+def send_out_of_stock_notification(event: events.OutOfStock):
+    email.send_mail(
+        "stock@made.com",
+        f"Out of stock for {event.sku}",
+    )
+
+
+HANDLERS = {
+    events.OutOfStock: [send_out_of_stock_notification],
+}
+```
+
+- **Option 1: The Service Layer Takes Events from the Model and Puts Them on the Message Bus**
+
+Our domain model raises events, and our message bus will call the right handlers
+whenever an event happens. Now all we need is to connect the two. We need some‐
+thing to catch events from the model and pass them to the message bus. The simplest way to do this is by adding some code into our service layer:
+
+```angular2html
+def allocate(
+    orderid: str, sku: str, qty: int,
+    uow: unit_of_work.AbstractUnitOfWork,
+) -> str:
+    line = OrderLine(orderid, sku, qty)
+    with uow:
+        product = uow.products.get(sku=line.sku)
+        if product is None:
+            raise InvalidSku(f"Invalid sku {line.sku}")
+        try:
+          batchref = product.allocate(line)
+          uow.commit()
+          return batchref
+        finally:
+            messagebus.handle(product.events)
+```
+
+We keep the try/finally from our ugly earlier implementation. But now, instead of depending directly on an email infrastructure, the service
+layer is just in charge of passing events from the model up to the message bus.
+That already avoids some of the ugliness that we had in our naive implementation,
+and we have several systems that work like this one, in which the service layer explicitly collects events from aggregates and passes them to the message bus.
+
+
+- **Option 2: The Service Layer Raises Its Own Events**
+
+Another variant on this that we’ve used is to have the service layer in charge of creating and raising events directly, rather than having them raised by the domain model:
+Service layer calls messagebus.handle directly
+
+```angular2html
+def allocate(
+    orderid: str, sku: str, qty: int,
+    uow: unit_of_work.AbstractUnitOfWork,
+) -> str:
+    line = OrderLine(orderid, sku, qty)
+    with uow:
+        product = uow.products.get(sku=line.sku)
+        if product is None:
+            raise InvalidSku(f"Invalid sku {line.sku}")
+        batchref = product.allocate(line)
+        uow.commit()
+        if batchref is None:
+            messagebus.handle(events.OutOfStock(line.sku))
+        return batchref
+```
+
+Again, we have applications in production that implement the pattern in this way.
+What works for you will depend on the particular trade-offs you face, but we’d like to
+show you what we think is the most elegant solution, in which we put the unit of
+work in charge of collecting and raising events.
+
+- **Option 3: The UoW Publishes Events to the Message Bus**
+
+The **UoW** already has a **try/finally**, and it knows about all the aggregates currently
+in play because it provides access to the repository. So it’s a good place to spot events
+and pass them to the message bus:
+
+```angular2html
+class AbstractUnitOfWork(abc.ABC):
+    products: repository.AbstractRepository
+
+    def __enter__(self) -> AbstractUnitOfWork:
+        return self
+
+    def __exit__(self, *args):
+        self.rollback()
+
+    def commit(self):
+        self._commit()
+        self.publish_events()
+
+    def publish_events(self):
+        for product in self.products.seen:
+            while product.events:
+                event = product.events.pop(0)
+                messagebus.handle(event)
+```
+
+We’ll change our commit method to require a private **._commit()** method from subclasses. After committing, we run through all the objects that our repository has seen and
+pass their events to the message bus. That relies on the repository keeping track of aggregates that have been loaded
+using a new attribute, .seen, as you’ll see in the next listing.
+
+After the UoW and repository collaborate in this way to automatically keep track of
+live objects and process their events, the service layer can be totally free of event handling concerns:
+
+- **Wrap-Up**
+
+Domain events give us a way to handle workflows in our system. We often find, listening to our domain experts, that they express requirements in a causal or temporal
+way—for example, “When we try to allocate stock but there’s none available, then we
+should send an email to the buying team.” The magic words “When X, then Y” often tell us about an event that we can make
+concrete in our system. Treating events as first-class things in our model helps us
+make our code more testable and observable, and it helps isolate concerns.
+
+- **Domain Events and the Message Bus Recap**
+
+1- We also use events for communicating between aggregates so that we don’t need
+to run long-running transactions that lock against multiple tables.
+
+2- You can think of a message bus as a dict that maps from events to their consumers. It doesn’t “know” anything about the meaning of events; it’s just a piece of
+dumb infrastructure for getting messages around the system.
+
+3- we can
+tidy up by making our unit of work responsible for raising events that were
+raised by loaded objects. This is the most complex design.
