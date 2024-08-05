@@ -16,6 +16,8 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter7: Aggregates and Consistency Boundaries](#chapter7-aggregates-and-consistency-boundaries)
 * [Event-Driven Architecture](#event-driven-architecture)
   * [Chapter8: Events and the Message Bus](#chapter8-events-and-the-message-bus)
+  * [Chapter9: Going to Town on the Message Bus](#chapter9-going-to-town-on-the-message-bus)
+  * [Chapter10: Commands and Command Handler](#chapter10-commands-and-command-handler)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -1820,3 +1822,302 @@ dumb infrastructure for getting messages around the system.
 3- we can
 tidy up by making our unit of work responsible for raising events that were
 raised by loaded objects. This is the most complex design.
+
+## Chapter9: Going to Town on the Message Bus
+
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_09_all_messagebus)
+
+
+We’ll move from the current state, where events are an optional side effect to the situation in Figure below, where everything goes via the message bus, and our
+app has been transformed fundamentally into a message processor.
+
+![](images/message_bus_as_main_entrypoint.png)
+
+- **A New Requirement Leads Us to a New Architecture**
+
+Perhaps someone made a mistake on the number in the
+manifest, or perhaps some sofas fell off a truck. Following a conversation with the
+business we model the situation as in Figure below.
+
+![](images/batch_quantity_changed.png)
+
+An event we’ll call **BatchQuantityChanged** should lead us to change the quantity on
+the batch, yes, but also to apply a business rule: if the new quantity drops to less than
+the total already allocated, we need to deallocate those orders from that batch. Then
+each one will require a new allocation, which we can capture as an event called **AllocationRequired**.
+
+- **Imagining an Architecture Change: Everything Will Be an Event Handler**
+
+1- **services.allocate()** could be the handler for an **AllocationRequired** event and could emit **Allocated** events as its output.
+2- **services.add_batch()** could be the handler for a **BatchCreated** event.
+
+Our new requirement will fit the same pattern:
+
+3- An event called **BatchQuantityChanged** can invoke a handler called
+**change_batch_quantity()**.
+
+4- And the new **AllocationRequired** events that it may raise can be passed on to
+**services.allocate()** too, so there is no conceptual difference between a brand new allocation coming from the API and a reallocation that’s internally triggered
+by a de allocation.
+
+Let’s work toward it all gradually
+
+1- We refactor our service layer into event handlers. We can get used to the idea of
+events being the way we describe inputs to the system. In particular, the existing
+**services.allocate()** function will become the handler for an event called **AllocationRequired**.
+
+2- We build an end-to-end test that puts **BatchQuantityChanged** events into the system and looks for Allocated events coming out.
+
+3- Our implementation will conceptually be very simple: a new handler for **BatchQuantityChanged** events, whose implementation will emit **AllocationRequired**
+events, which in turn will be handled by the exact same handler for allocations
+that the API uses.
+
+
+- **Refactoring Service Functions to Message Handlers**
+
+We start by defining the two events that capture our current API inputs—**AllocationRequired** and **BatchCreated**:
+
+```angular2html
+@dataclass
+class BatchCreated(Event):
+    ref: str
+    sku: str
+    qty: int
+    eta: Optional[date] = None
+
+
+@dataclass
+class AllocationRequired(Event):
+    orderid: str
+    sku: str
+    qty: int
+```
+Then we rename **services.py** to **handlers.py**; we add the existing message handler for
+**send_out_of_stock_notification**; and most importantly, we change all the handlers so that they have the same inputs, an **event** and a **UoW**
+
+```angular2html
+def add_batch(
+    event: events.BatchCreated,
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    with uow:
+        product = uow.products.get(sku=event.sku)
+        if product is None:
+            product = model.Product(event.sku, batches=[])
+            uow.products.add(product)
+        product.batches.append(
+            model.Batch(event.ref, event.sku, event.qty, event.eta)
+        )
+        uow.commit()
+
+
+def allocate(
+    event: events.AllocationRequired,
+    uow: unit_of_work.AbstractUnitOfWork,
+) -> str:
+    line = OrderLine(event.orderid, event.sku, event.qty)
+    with uow:
+        product = uow.products.get(sku=line.sku)
+        if product is None:
+            raise InvalidSku(f"Invalid sku {line.sku}")
+        batchref = product.allocate(line)
+        uow.commit()
+        return batchref
+
+```
+
+- **The Message Bus Now Collects Events from the UoW**
+
+Our event handlers now need a UoW. In addition, as our message bus becomes more
+central to our application, it makes sense to put it explicitly in charge of collecting
+and processing new events. There was a bit of a circular dependency between the
+UoW and message bus until now, so this will make it one-way:
+
+```angular2html
+def handle(
+    event: events.Event,
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    results = []
+    queue = [event]
+    while queue:
+        event = queue.pop(0)
+        for handler in HANDLERS[type(event)]:
+            results.append(handler(event, uow=uow))
+            queue.extend(uow.collect_new_events())
+    return results
+
+
+HANDLERS = {
+    events.BatchCreated: [handlers.add_batch],
+    events.BatchQuantityChanged: [handlers.change_batch_quantity],
+    events.AllocationRequired: [handlers.allocate],
+    events.OutOfStock: [handlers.send_out_of_stock_notification],
+}  # type: Dict[Type[events.Event], List[Callable]]
+```
+The message bus now gets passed the UoW each time it starts up. When we begin handling our first event, we start a queue.
+We pop events from the front of the queue and invoke their handlers (the
+HANDLERS dict hasn’t changed; it still maps event types to handler functions).
+The message bus passes the UoW down to each handler. After each handler finishes, we collect any new events that have been generated
+and add them to the queue.
+
+In **unit_of_work.py**, **publish_events()** becomes a less active method, **collect_new_events()**:
+
+```angular2html
+class AbstractUnitOfWork(abc.ABC):
+    products: repository.AbstractRepository
+
+    def __enter__(self) -> AbstractUnitOfWork:
+        return self
+
+    def __exit__(self, *args):
+        self.rollback()
+
+    def commit(self):
+        self._commit()
+
+    def collect_new_events(self):
+        for product in self.products.seen:
+            while product.events:
+                yield product.events.pop(0)
+
+    @abc.abstractmethod
+    def _commit(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def rollback(self):
+        raise NotImplementedError
+```
+The **unit_of_work** module now no longer depends on **messagebus**. We no longer **publish_events** automatically on commit. The message bus is
+keeping track of the event queue instead. And the UoW no longer actively puts events on the message bus; it just makes
+them available.
+
+- **Modifying Our API to Work with Events**
+
+```angular2html
+@app.route("/allocate", methods=["POST"])
+def allocate_endpoint():
+    try:
+        event = events.AllocationRequired(
+            request.json["orderid"], request.json["sku"], request.json["qty"]
+        )
+        results = messagebus.handle(event, unit_of_work.SqlAlchemyUnitOfWork())
+        batchref = results.pop(0)
+    except InvalidSku as e:
+        return {"message": str(e)}, 400
+
+    return {"batchref": batchref}, 201
+```
+
+Instead of calling the service layer with a bunch of primitives extracted from the
+request JSON We instantiate an event. Then we pass it to the message bus. And we should be back to a fully functional application, but one that’s now fully
+event-driven:
+
+1- What used to be service-layer functions are now event handlers.
+
+2- We use events as our data structure for capturing inputs to the system, as well as
+for handing off of internal work packages.
+
+3- The entire app is now best described as a message processor, or an event processor if you prefer
+
+- **Implementing Our New Requirement**
+
+we’ll receive as our inputs some new **BatchQuantityChanged** events and pass them to a handler, which in
+turn might emit some **AllocationRequired** events, and those in turn will go back to
+our existing handler for **reallocation**.
+
+![](images/sequence_diagram_reallocation.png)
+
+- **Our New Event**
+
+The event that tells us a batch quantity has changed is simple; it just needs a batch
+reference and a new quantity:
+
+```angular2html
+@dataclass
+class BatchQuantityChanged(Event):
+    ref: str
+    qty: int
+```
+
+Implementation of new handler
+
+```angular2html
+def change_batch_quantity(
+    event: events.BatchQuantityChanged,
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    with uow:
+        product = uow.products.get_by_batchref(batchref=event.ref)
+        product.change_batch_quantity(ref=event.ref, qty=event.qty)
+        uow.commit()
+```
+We realize we’ll need a new query type on our repository:
+
+```angular2html
+class AbstractRepository(abc.ABC):
+    def __init__(self):
+        self.seen = set()  # type: Set[model.Product]
+
+    def get_by_batchref(self, batchref) -> model.Product:
+        product = self._get_by_batchref(batchref)
+        if product:
+            self.seen.add(product)
+        return product
+```
+
+- **A New Method on the Domain Model**
+
+We add the new method to the model, which does the quantity change and deallocation(s) inline and publishes a new event. We also modify the existing allocate func‐
+tion to publish an event:
+
+```angular2html
+class Product:
+    def __init__(self, sku: str, batches: List[Batch], version_number: int = 0):
+        self.sku = sku
+        self.batches = batches
+        self.version_number = version_number
+        self.events = []  # type: List[events.Event]
+
+    def change_batch_quantity(self, ref: str, qty: int):
+        batch = next(b for b in self.batches if b.reference == ref)
+        batch._purchased_quantity = qty
+        while batch.available_quantity < 0:
+            line = batch.deallocate_one()
+            self.events.append(
+                events.AllocationRequired(line.orderid, line.sku, line.qty)
+            )
+
+
+class Batch:
+    def __init__(self, ref: str, sku: str, qty: int, eta: Optional[date]):
+        self.reference = ref
+        self.sku = sku
+        self.eta = eta
+        self._purchased_quantity = qty
+        self._allocations = set()  # type: Set[OrderLine]
+
+    def deallocate_one(self) -> OrderLine:
+        return self._allocations.pop()
+```
+
+- **What Have We Achieved?**
+
+Events are simple dataclasses that define the data structures for inputs and internal
+messages within our system. This is quite powerful from a DDD standpoint, since
+events often translate really well into business language. Handlers are the way we react to events. They can call down to our model or call out
+to external services. We can define multiple handlers for a single event if we want to.
+Handlers can also raise other events. This allows us to be very granular about what a
+handler does and really stick to the SRP.
+
+- **Why Have We Achieved?**
+
+Here we’ve added quite a complicated use case (change quantity, deallocate, start new
+transaction, reallocate, publish external notification), but architecturally, there’s been
+no cost in terms of complexity. We’ve added new events, new handlers, and a new
+external adapter (for email), all of which are existing categories of things in our architecture that we understand and know how to reason about, and that are easy to
+explain to newcomers. Our moving parts each have one job, they’re connected to
+each other in well-defined ways, and there are no unexpected side effects.
+
+## Chapter10: Commands and Command Handler
