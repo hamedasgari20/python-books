@@ -19,6 +19,7 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter9: Going to Town on the Message Bus](#chapter9-going-to-town-on-the-message-bus)
   * [Chapter10: Commands and Command Handler](#chapter10-commands-and-command-handler)
   * [Chapter11: Using Events to Integrate Microservices](#chapter11-using-events-to-integrate-microservices)
+  * [Chapter12: Command-Query Responsibility Segregation (CQRS)](#chapter12-command-query-responsibility-segregation-cqrs)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -2274,4 +2275,169 @@ mean that each attempt starts from a consistent state and won’t leave things h
 
 [Source Code](https://github.com/cosmicpython/code/tree/chapter_11_external_events)
 
+In the preceding chapter, we never actually spoke about how we would receive the
+“batch quantity changed” events, or indeed, how we might notify the outside world
+about reallocations.
 
+We have a microservice with a web API, but what about other ways of talking to other
+systems? How will we know if, say, a shipment is delayed or the quantity is amended?
+How will we tell the warehouse system that an order has been allocated and needs to
+be sent to a customer?
+
+In this chapter, we’d like to show how the events metaphor can be extended to encompass the way that we handle incoming and outgoing messages from the system. Internally, the core of our application is now a message processor. Let’s follow through on
+that so it becomes a message processor externally as well. As shown in Figure below,
+our application will receive events from external sources via an external message bus
+(we’ll use Redis pub/sub queues as an example) and publish its outputs, in the form of
+events, back there as well.
+
+![](images/our_application_as_processor.png)
+
+- **Temporal Decoupling Using Asynchronous Messaging**
+
+How do we get appropriate coupling? We’ve already seen part of the answer, which is
+that we should think in terms of verbs, not nouns. Our domain model is about modeling a business process. It’s not a static data model about a thing; it’s a model of a
+verb. So instead of thinking about a system for orders and a system for batches, we think
+about a system for ordering and a system for allocating, and so on. When we separate things this way, it’s a little easier to see which system should be
+responsible for what. When thinking about ordering, really we want to make sure that
+when we place an order, the order is placed. Everything else can happen later, so long
+as it happens.
+
+Like aggregates, microservices should be consistency boundaries. Between two services, we can accept eventual consistency, and that means we don’t need to rely on synchronous calls. Each service accepts commands from the outside world and raises
+events to record the result. Other services can listen to those events to trigger the next steps in the workflow.
+
+We want our **BatchQuantityChanged** messages to come in as external messages from upstream systems, and we want our system to publish **Allocated** events for down stream systems to listen to.
+
+Why is this better? First, because things can fail independently, it’s easier to handle
+degraded behavior: we can still take orders if the allocation system is having a bad
+day.
+Second, we’re reducing the strength of coupling between our systems. If we need to
+change the order of operations or to introduce new steps in the process, we can do
+that locally.
+
+- **Using a Redis Pub/Sub Channel for Integration**
+
+Let’s see how it will all work concretely. We’ll need some way of getting events out of
+one system and into another, like our message bus, but for services. This piece of
+infrastructure is often called a message broker. The role of a message broker is to take
+messages from publishers and deliver them to subscribers.
+
+
+Our new flow will look like Figure below: Redis provides the **BatchQuantityChanged**
+event that kicks off the whole process, and our **Allocated** event is published back out
+to Redis again at the end.
+
+![](images/sequence_diagram_reallocation_flow.png)
+
+- **Redis Is Another Thin Adapter Around Our Message Bus**
+
+Our Redis pub/sub listener (we call it an event consumer) is very much like Flask: it
+translates from the outside world to our events:
+
+```angular2html
+r = redis.Redis(**config.get_redis_host_and_port())
+
+
+def main():
+    orm.start_mappers()
+    pubsub = r.pubsub(ignore_subscribe_messages=True)
+    pubsub.subscribe("change_batch_quantity")
+
+    for m in pubsub.listen():
+        handle_change_batch_quantity(m)
+
+
+def handle_change_batch_quantity(m):
+    logging.debug("handling %s", m)
+    data = json.loads(m["data"])
+    cmd = commands.ChangeBatchQuantity(ref=data["batchref"], qty=data["qty"])
+    messagebus.handle(cmd, uow=unit_of_work.SqlAlchemyUnitOfWork())
+
+
+if __name__ == "__main__":
+    main()
+```
+
+
+**main()** subscribes us to the **change_batch_quantity** channel on load.
+Our main job as an entrypoint to the system is to deserialize JSON, convert it to a
+Command, and pass it to the service layer much as the Flask adapter does.
+
+We also build a new downstream adapter to do the opposite job—converting domain
+events to public events:
+
+```angular2html
+logger = logging.getLogger(__name__)
+
+r = redis.Redis(**config.get_redis_host_and_port())
+
+
+def publish(channel, event: events.Event):
+    logging.debug("publishing: channel=%s, event=%s", channel, event)
+    r.publish(channel, json.dumps(asdict(event)))
+```
+
+We take a hardcoded channel here, but you could also store a mapping between
+event classes/names and the appropriate channel, allowing one or more message
+types to go to different channels.
+
+- **Our New Outgoing Event**
+
+Here’s what the Allocated event will look like:
+
+```angular2html
+@dataclass
+class Allocated(Event):
+    orderid: str
+    sku: str
+    qty: int
+    batchref: str
+```
+
+It captures everything we need to know about an allocation: the details of the order
+line, and which batch it was allocated to. We add it into our model’s allocate() method (having added a test first, naturally):
+
+```angular2html
+    def allocate(self, line: OrderLine) -> str:
+        try:
+            batch = next(b for b in sorted(self.batches) if b.can_allocate(line))
+            batch.allocate(line)
+            self.version_number += 1
+            self.events.append(
+                events.Allocated(
+                    orderid=line.orderid,
+                    sku=line.sku,
+                    qty=line.qty,
+                    batchref=batch.reference,
+                )
+            )
+            return batch.reference
+```
+The handler for ChangeBatchQuantity already exists, so all we need to add is a han‐
+dler that publishes the outgoing event:
+
+```angular2html
+EVENT_HANDLERS = {
+    events.Allocated: [handlers.publish_allocated_event]
+}  
+```
+
+Publishing the event uses our helper function from the Redis wrapper:
+
+```angular2html
+def publish_allocated_event(
+    event: events.Allocated,
+    uow: unit_of_work.AbstractUnitOfWork):
+    redis_eventpublisher.publish("line_allocated", event)
+```
+
+- **Wrap-Up**
+
+Events can come from the outside, but they can also be published externally—our
+publish handler converts an event to a message on a Redis channel. We use events to
+talk to the outside world. This kind of temporal decoupling buys us a lot of flexibility
+in our application integrations, but as always, it comes at a cost. More generally, if you’re moving from a model of synchronous messaging to an async
+one, you also open up a whole host of problems having to do with message reliability
+and eventual consistency. 
+
+
+## Chapter12: Command-Query Responsibility Segregation (CQRS)
