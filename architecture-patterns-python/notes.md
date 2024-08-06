@@ -18,6 +18,7 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter8: Events and the Message Bus](#chapter8-events-and-the-message-bus)
   * [Chapter9: Going to Town on the Message Bus](#chapter9-going-to-town-on-the-message-bus)
   * [Chapter10: Commands and Command Handler](#chapter10-commands-and-command-handler)
+  * [Chapter11: Using Events to Integrate Microservices](#chapter11-using-events-to-integrate-microservices)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -1849,6 +1850,7 @@ each one will require a new allocation, which we can capture as an event called 
 - **Imagining an Architecture Change: Everything Will Be an Event Handler**
 
 1- **services.allocate()** could be the handler for an **AllocationRequired** event and could emit **Allocated** events as its output.
+
 2- **services.add_batch()** could be the handler for a **BatchCreated** event.
 
 Our new requirement will fit the same pattern:
@@ -1860,7 +1862,7 @@ Our new requirement will fit the same pattern:
 **services.allocate()** too, so there is no conceptual difference between a brand new allocation coming from the API and a reallocation that’s internally triggered
 by a de allocation.
 
-Let’s work toward it all gradually
+**Let’s work toward it all gradually**
 
 1- We refactor our service layer into event handlers. We can get used to the idea of
 events being the way we describe inputs to the system. In particular, the existing
@@ -2121,3 +2123,155 @@ explain to newcomers. Our moving parts each have one job, they’re connected to
 each other in well-defined ways, and there are no unexpected side effects.
 
 ## Chapter10: Commands and Command Handler
+
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_10_commands)
+
+In the previous chapter, we talked about using events as a way of representing the
+inputs to our system, and we turned our application into a message-processing
+machine.
+
+- **Commands and Events**
+
+Like events, **commands** are a type of message—instructions sent by one part of a system to another. We usually represent commands with dumb data structures and can
+handle them in much the same way as events. Commands are sent by one actor to another specific actor with the expectation that a
+particular thing will happen as a result. We name commands with imperative mood verb phrases
+like “allocate stock” or “delay shipment. They express our wish for the system to do something.  As
+a result, when they fail, the sender needs to receive error information.
+
+**Events** are broadcast by an actor to all interested listeners. When we publish BatchQuantityChanged, we don’t know who’s going to pick it up. We name events with
+past-tense verb phrases like “order allocated to stock” or “shipment delayed.Events capture facts about things that happened in the past. Since we don’t know
+who’s handling an event, senders should not care whether the receivers succeeded or failed.
+
+What kinds of commands do we have in our system right now?
+
+```angular2html
+class Command:
+    pass
+
+
+@dataclass
+class Allocate(Command):
+    orderid: str
+    sku: str
+    qty: int
+
+
+@dataclass
+class CreateBatch(Command):
+    ref: str
+    sku: str
+    qty: int
+    eta: Optional[date] = None
+
+
+@dataclass
+class ChangeBatchQuantity(Command):
+    ref: str
+    qty: int
+```
+
+- **Differences in Exception Handling**
+
+We want to treat events and commands similarly, but not exactly the
+same. Let’s see how our message bus changes:
+
+```angular2html
+Message = Union[commands.Command, events.Event]
+
+
+def handle(
+    message: Message,
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    results = []
+    queue = [message]
+    while queue:
+        message = queue.pop(0)
+        if isinstance(message, events.Event):
+            handle_event(message, queue, uow)
+        elif isinstance(message, commands.Command):
+            cmd_result = handle_command(message, queue, uow)
+            results.append(cmd_result)
+        else:
+            raise Exception(f"{message} was not an Event or Command")
+    return results
+```
+
+It still has a main **handle()** entrypoint that takes a message, which may be a command or an event. We dispatch events and commands to two different helper functions, shown
+next.
+
+Here’s how we handle events:
+
+```angular2html
+def handle_event(
+    event: events.Event,
+    queue: List[Message],
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    for handler in EVENT_HANDLERS[type(event)]:
+        try:
+            logger.debug("handling event %s with handler %s", event, handler)
+            handler(event, uow=uow)
+            queue.extend(uow.collect_new_events())
+        except Exception:
+            logger.exception("Exception handling event %s", event)
+            continue
+```
+Events go to a dispatcher that can delegate to multiple handlers per event. It catches and logs errors but doesn’t let them interrupt message processing.
+
+And here’s how we do commands:
+
+```angular2html
+def handle_command(
+    command: commands.Command,
+    queue: List[Message],
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    logger.debug("handling command %s", command)
+    try:
+        handler = COMMAND_HANDLERS[type(command)]
+        result = handler(command, uow=uow)
+        queue.extend(uow.collect_new_events())
+        return result
+    except Exception:
+        logger.exception("Exception handling command %s", command)
+        raise
+```
+
+The command dispatcher expects just one handler per command. If any errors are raised, they fail fast and will bubble up.
+We also change the single HANDLERS dict into different ones for commands and
+events. Commands can have only one handler, according to our convention:
+
+```angular2html
+EVENT_HANDLERS = {
+    events.OutOfStock: [handlers.send_out_of_stock_notification],
+}  # type: Dict[Type[events.Event], List[Callable]]
+
+COMMAND_HANDLERS = {
+    commands.Allocate: handlers.allocate,
+    commands.CreateBatch: handlers.add_batch,
+    commands.ChangeBatchQuantity: handlers.change_batch_quantity,
+}  # type: Dict[Type[commands.Command], Callable]
+```
+
+When a user wants to make the system do something, we represent their request as a command. That command should modify a
+single aggregate and either succeed or fail in totality. Any other bookkeeping, cleanup,
+and notification we need to do can happen via an event. We don’t require the event
+handlers to succeed in order for the command to be successful.
+
+- **Recovering from Errors Synchronously**
+
+Hopefully we’ve convinced you that it’s OK for events to fail independently from the
+commands that raised them. What should we do, then, to make sure we can recover
+from errors when they inevitably occur?
+
+Tenacity is a Python library that implements common patterns for retrying. Retrying operations that might fail is probably the single best way to improve the
+resilience of our software. Again, the Unit of Work and Command Handler patterns
+mean that each attempt starts from a consistent state and won’t leave things half finished.
+
+## Chapter11: Using Events to Integrate Microservices
+
+
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_11_external_events)
+
+
