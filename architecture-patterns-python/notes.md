@@ -2734,3 +2734,7 @@ dependencies around manually, unless you do some kind of dependency injection.
 Setting up dependency injection is just one of many typical setup/initialization activi‐
 ties that you need to do just once when starting your app. Putting this all together
 into a bootstrap script is often a good idea.
+
+Here’s what our architecture looks like by the end of the book:
+
+![](images/final_figure.png)
