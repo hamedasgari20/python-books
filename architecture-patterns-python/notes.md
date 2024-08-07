@@ -20,6 +20,7 @@ Authors: Bob Gregory, Harry Percival
   * [Chapter10: Commands and Command Handler](#chapter10-commands-and-command-handler)
   * [Chapter11: Using Events to Integrate Microservices](#chapter11-using-events-to-integrate-microservices)
   * [Chapter12: Command-Query Responsibility Segregation (CQRS)](#chapter12-command-query-responsibility-segregation-cqrs)
+  * [Chapter13: Dependency Injection (and Bootstrapping)](#chapter13-dependency-injection-and-bootstrapping)
 <!-- TOC -->
 
 [The source code in GitHub](https://github.com/cosmicpython/code)
@@ -2441,3 +2442,60 @@ and eventual consistency.
 
 
 ## Chapter12: Command-Query Responsibility Segregation (CQRS)
+
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_12_cqrs)
+
+In this chapter, we’re going to start with a fairly uncontroversial insight: reads (queries) and writes (commands) are different, so they should be treated differently.
+Figure below shows where we might end up. Separating reads from writes
+
+![](images/separating_reads_from_writes.png)
+
+For the write side, our fancy domain architectural patterns help us to evolve our system over time, but the complexity we’ve built so far doesn’t buy anything for reading
+data. The service layer, the unit of work, and the clever domain model are just bloat.
+
+Ages ago, we introduced
+an allocate endpoint that takes an order and calls our service layer to allocate some
+stock. At the end of the call, we return a 200 OK and the batch ID. That’s led to some
+ugly design flaws so that we can get the data we need. Let’s change it to return a simple OK message and instead provide a new read-only endpoint to retrieve allocation
+state:
+
+```angular2html
+@app.route("/allocations/<orderid>", methods=["GET"])
+def allocations_view_endpoint(orderid):
+    uow = unit_of_work.SqlAlchemyUnitOfWork()
+    result = views.allocations(orderid, uow)
+    if not result:
+        return "not found", 404
+    return jsonify(result), 200
+```
+We’ll still keep our view in a separate views.py module; enforcing a clear distinction
+between reads and writes in your application is still a good idea. We apply command query separation, and it’s easy to see which code modifies state (the event handlers)
+and which code just retrieves read-only state (the views). Splitting out your read-only views from your state-modifying command and event handlers is probably a good idea, even if you don’t
+want to go to full-blown CQRS.
+
+- **Using the ORM**
+
+I can at least use my ORM and work with Batches. That’s what it’s for!
+
+```angular2html
+def allocations(orderid: str, uow: unit_of_work.AbstractUnitOfWork):
+   with uow:
+     batches = uow.session.query(model.Batch).join(
+       model.OrderLine, model.Batch._allocations
+     ).filter(
+       model.OrderLine.orderid == orderid
+     )
+     return [
+       {'sku': b.sku, 'batchref': b.batchref}
+       for b in batches
+     ]
+```
+
+
+
+## Chapter13: Dependency Injection (and Bootstrapping)
+
+[Source Code](https://github.com/cosmicpython/code/tree/chapter_13_dependency_injection)
+
+
+
