@@ -2497,5 +2497,240 @@ def allocations(orderid: str, uow: unit_of_work.AbstractUnitOfWork):
 
 [Source Code](https://github.com/cosmicpython/code/tree/chapter_13_dependency_injection)
 
+We’ll also add a new component to our architecture called **bootstrap.py**; it will be in
+charge of **dependency injection**, as well as some other **initialization** stuff that we often
+need. 
+
+Figure below shows what our app looks like without a bootstrapper: the entrypoints do
+a lot of initialization and passing around of our main dependency, the **UoW**.
+
+![](images/without_bootstrap.png)
+
+Figure below shows our bootstrapper taking over those responsibilities.
+
+![](images/with_uow.png)
+
+We’ve shown you two ways of managing dependencies and testing them. For our database dependency, we’ve built a careful framework of explicit dependencies and easy options for overriding them in tests. Our main handler functions
+declare an explicit dependency on the UoW:
+
+```angular2html
+def allocate(
+    cmd: commands.Allocate,
+    uow: unit_of_work.AbstractUnitOfWork,
+):
+    ...
+
+```
+And that makes it easy to swap in a fake UoW in our service-layer tests:
+
+```angular2html
+uow = FakeUnitOfWork()
+```
+
+The UoW itself declares an explicit dependency on the session factory:
+
+```angular2html
+class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
+    def __init__(self, session_factory=DEFAULT_SESSION_FACTORY):
+        self.session_factory = session_factory
+```
+
+- **Preparing Handlers: Manual DI with Closures and Partials**
+
+One way to turn a function with dependencies into one that’s ready to be called later
+with those dependencies already injected is to use closures or partial functions to
+compose the function with its dependencies:
+
+Examples of DI using closures or partial functions
+
+```angular2html
+# existing allocate function, with abstract uow dependency
+def allocate(cmd: commands.Allocate, uow: unit_of_work.AbstractUnitOfWork):
+   line = OrderLine(cmd.orderid, cmd.sku, cmd.qty)
+   with uow:
+     ...
+```
+Now
+```angular2html
+# bootstrap script prepares actual UoW
+def bootstrap(..):
+   uow = unit_of_work.SqlAlchemyUnitOfWork()
+
+   # prepare a version of the allocate fn with UoW dependency captured in a closure
+   allocate_composed = lambda cmd: allocate(cmd, uow)
+
+   # or, equivalently (this gets you a nicer stack trace)
+   def allocate_composed(cmd):
+        return allocate(cmd, uow)
+
+   # alternatively with a partial
+   import functools
+   allocate_composed = functools.partial(allocate, uow=uow)
+
+# later at runtime, we can call the partial function, and it will have
+# the UoW already bound
+allocate_composed(cmd)
+```
+Another closure and partial functions example
+
+```angular2html
+def send_out_of_stock_notification(event: events.OutOfStock, send_mail: Callable,):
+   send_mail(
+   'stock@made.com',
+   ...
+
+# prepare a version of the send_out_of_stock_notification with dependencies
+sosn_composed = lambda event: send_out_of_stock_notification(event, email.send_mail)
+...
+
+# later, at runtime:
+sosn_composed(event) # will have email.send_mail already injected in
+```
+
+- **A Bootstrap Script**
+
+We want our bootstrap script to do the following:
+
+1- Declare default dependencies but allow us to override them
+
+2- Do the “init” stuff that we need to get our app started
+
+3- Inject all the dependencies into our handlers
+
+4- Give us back the core object for our app, the message bus
+
+Here is the bootstrap function:
+
+```angular2html
+ef bootstrap(
+    start_orm: bool = True,
+    uow: unit_of_work.AbstractUnitOfWork = unit_of_work.SqlAlchemyUnitOfWork(),
+    notifications: AbstractNotifications = None,
+    publish: Callable = redis_eventpublisher.publish,
+) -> messagebus.MessageBus:
+
+    if notifications is None:
+        notifications = EmailNotifications()
+
+    if start_orm:
+        orm.start_mappers()
+
+    dependencies = {"uow": uow, "notifications": notifications, "publish": publish}
+    injected_event_handlers = {
+        event_type: [
+            inject_dependencies(handler, dependencies)
+            for handler in event_handlers
+        ]
+        for event_type, event_handlers in handlers.EVENT_HANDLERS.items()
+    }
+    injected_command_handlers = {
+        command_type: inject_dependencies(handler, dependencies)
+        for command_type, handler in handlers.COMMAND_HANDLERS.items()
+    }
+
+    return messagebus.MessageBus(
+        uow=uow,
+        event_handlers=injected_event_handlers,
+        command_handlers=injected_command_handlers,
+    )
 
 
+def inject_dependencies(handler, dependencies):
+    params = inspect.signature(handler).parameters
+    deps = {
+        name: dependency
+        for name, dependency in dependencies.items()
+        if name in params
+    }
+    return lambda message: handler(message, **deps)
+```
+
+**orm.start_mappers()** is our example of initialization work that needs to be done
+once at the beginning of an app. We also see things like setting up the logging
+module. We build up our injected versions of the handler mappings by using a function
+called **inject_dependencies()**, which we’ll show next. We return a configured message bus ready for use.
+
+
+- **Message Bus Is Given Handlers at Runtime**
+
+Our message bus will no longer be static; it needs to have the already-injected handlers given to it. So we turn it from being a module into a configurable class:
+
+```angular2html
+class MessageBus:
+    def __init__(
+        self,
+        uow: unit_of_work.AbstractUnitOfWork,
+        event_handlers: Dict[Type[events.Event], List[Callable]],
+        command_handlers: Dict[Type[commands.Command], Callable],
+    ):
+        self.uow = uow
+        self.event_handlers = event_handlers
+        self.command_handlers = command_handlers
+
+    def handle(self, message: Message):
+        self.queue = [message]
+        while self.queue:
+            message = self.queue.pop(0)
+            if isinstance(message, events.Event):
+                self.handle_event(message)
+            elif isinstance(message, commands.Command):
+                self.handle_command(message)
+            else:
+                raise Exception(f"{message} was not an Event or Command")
+
+    def handle_event(self, event: events.Event):
+        for handler in self.event_handlers[type(event)]:
+            try:
+                logger.debug("handling event %s with handler %s", event, handler)
+                handler(event)
+                self.queue.extend(self.uow.collect_new_events())
+            except Exception:
+                logger.exception("Exception handling event %s", event)
+                continue
+
+    def handle_command(self, command: commands.Command):
+        logger.debug("handling command %s", command)
+        try:
+            handler = self.command_handlers[type(command)]
+            handler(command)
+            self.queue.extend(self.uow.collect_new_events())
+        except Exception:
+            logger.exception("Exception handling command %s", command)
+            raise
+
+```
+
+The message bus becomes a class which is given its already-dependency-injected handlers.
+The main **handle()** function is substantially the same, with just a few attributes and methods moved onto self.
+handle_event and handle_command are substantially the same, but instead of
+indexing into a static EVENT_HANDLERS or COMMAND_HANDLERS dict, they use the
+versions on self. Instead of passing a UoW into the handler, we expect the handlers to already
+have all their dependencies, so all they need is a single argument, the specific
+event or command.
+
+- **Using Bootstrap in Our Entrypoints**
+
+In our application’s entrypoints, we now just call bootstrap.bootstrap() and get a
+message bus that’s ready to go, rather than configuring a UoW and the rest of it:
+
+```angular2html
+@app.route("/allocate", methods=["POST"])
+def allocate_endpoint():
+    try:
+        cmd = commands.Allocate(
+            request.json["orderid"], request.json["sku"], request.json["qty"]
+        )
+        bus.handle(cmd)
+    except InvalidSku as e:
+        return {"message": str(e)}, 400
+
+    return "OK", 202
+```
+
+- **Wrap-Up**
+
+Once you have more than one adapter, you’ll start to feel a lot of pain from passing
+dependencies around manually, unless you do some kind of dependency injection.
+Setting up dependency injection is just one of many typical setup/initialization activi‐
+ties that you need to do just once when starting your app. Putting this all together
+into a bootstrap script is often a good idea.
