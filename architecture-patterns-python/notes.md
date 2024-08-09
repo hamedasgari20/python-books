@@ -34,7 +34,7 @@ their own term for chaos: the Big Ball of Mud anti-pattern.
 
 ![](images/big_ball_of_mud.png "Big ball of mud")
 
-If you’d like a picture of where we’re going, take a look at Figure below, but don’t worry if
+If you’d like a picture of where we’re going in part one of this book, take a look at Figure below, but don’t worry if
 none of it makes sense yet! We introduce each box in the figure, one by one.
 
 ![](images/component_diagram_for_our_app.png)
@@ -117,7 +117,6 @@ here is our UML and domain model:
 
 ![](images/uml.png)
 
-todo: explain _purchased_quantity and allocations with more details
 
 ```angular2html
 
@@ -176,7 +175,6 @@ class OrderLine:
 
 ```
 
-todo: Why OrderLine is value object? How can we save its related data in DB?
 
 - **Entities**
 
@@ -299,7 +297,6 @@ def allocate_endpoint():
      return 201
 ```
 
-todo: What is the advantage of the mentioned approach? Explain its functionality
 
  - **What Is a Port and What Is an Adapter, in Python?** (Perplexity is used for better definition in this section)
 
@@ -491,7 +488,6 @@ to the service layer, which will serve as the entrypoint to our domain model. Be
 our service layer depends on the **AbstractRepository**, we can unit test it by using
 **FakeRepository** but run our production code using **SqlAlchemyRepository**.
 
-todo: Where is FakeRepository come from?
 
 ![](images/service_layer_added.png)
 
@@ -711,7 +707,6 @@ Here are the dependencies tree in our app when we run tests and when we run the 
 ![](images/tests_dependency.png)
 ![](images/runtime_dependency.png)
 
-todo: explain more details about these figures and DIP
 
 But there are still some bits of awkwardness to tidy up:
 
