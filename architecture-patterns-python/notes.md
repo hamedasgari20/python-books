@@ -2503,7 +2503,7 @@ a lot of initialization and passing around of our main dependency, the **UoW**.
 
 Figure below shows our bootstrapper taking over those responsibilities.
 
-![](images/with_uow.png)
+![](images/with_bootstrap.png)
 
 We’ve shown you two ways of managing dependencies and testing them. For our database dependency, we’ve built a careful framework of explicit dependencies and easy options for overriding them in tests. Our main handler functions
 declare an explicit dependency on the UoW:
