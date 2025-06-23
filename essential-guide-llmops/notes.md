@@ -62,6 +62,15 @@ For a customer support bot:
 - Semi-structured: Product reviews in JSON
 - Unstructured: FAQs from website HTML
 
+
+**Available tools:**  
+
+- Apache NiFi : Automate the flow of data between systems (data ingestion).
+- Logstash : Collect logs and unstructured data for preprocessing.
+- Airbyte : Open-source ELT tool for syncing data from any source.
+
+
+
 ---
 
 ### 🗃️ 1.2 Transferring Data into a Centralized Repository Schema
@@ -83,6 +92,12 @@ import pandas as pd
 df = pd.read_csv("customer_data.csv")
 df.to_parquet("customer_data.parquet")
 ```
+
+
+**Available tools:**  
+
+- LakeFS : Git-like version control layer over object storage (e.g., S3, GCS).
+- Delta Lake : Open format for transactional data lakes with ACID properties.
 
 ---
 
@@ -111,6 +126,12 @@ cleaned_df = df.withColumn(
 
 This code reads data from a Parquet file, processes the "raw_text" column by converting it to lowercase and removing special characters, and stores the cleaned text in a new column called "cleaned_text".
 
+
+**Available tools:**  
+
+- Apache Spark : Distributed processing engine for large-scale data cleaning and transformation.
+- Dask : Parallel computing library similar to Spark but in Python ecosystem.
+
 ---
 
 ### ⏱️ 1.4 Automating the Process Using Cron Jobs
@@ -129,6 +150,11 @@ Automate data collection and cleaning using **cron jobs**.
 ```bash
 0 0 * * * /usr/bin/python3 /path/to/data_pipeline.py
 ```
+
+**Available tools:**  
+
+- Apache Airflow : Orchestrate workflows using DAGs (Directed Acyclic Graphs).
+- Argo Workflows : Kubernetes-native workflow engine for automating pipelines.
 
 ---
 
@@ -161,6 +187,12 @@ Example output (values will be long lists):
 }
 
 ```
+
+**Available tools:**  
+
+- Hugging Face Transformers : Tokenization and feature creation for LLMs.
+- Sentence Transformers : Create sentence embeddings for semantic tasks.
+
 ---
 
 ### 🗂️ 2.2 Storing Features in Feast
@@ -214,6 +246,12 @@ store.apply([user_entity, llm_training_features])
 store.ingest("llm_training_features", df)
 ```
 
+**Available tools:**  
+
+- Feast : Feature store for managing features used in ML models.
+- Hopsworks Feature Store : Another enterprise-grade feature store with open-source core.
+
+
 ---
 
 ### 📤 2.3 Retrieving Features
@@ -228,6 +266,10 @@ from feast import FeatureStore
 store = FeatureStore(repo_path=".")
 features = store.get_online_features(feature_refs=["token_ids", "attention_mask"], entity_rows=[{"input_id": 123}])
 ```
+
+**Available tools:**  
+
+- Feast SDK : Use the Feast client to retrieve features for training or inference.
 
 ---
 
@@ -244,6 +286,11 @@ Choose a pre-trained model:
 
 **Example:**  
 Use Phi3 for a lightweight customer service bot.
+
+
+**Available tools:**  
+
+- Hugging Face Hub : Access and download open-source foundation models (e.g., Llama, Phi, Mistral).
 
 ---
 
@@ -348,6 +395,14 @@ trainer.push_to_hub()
 ```
 Fine-tuning an open-source model involves adapting a pre-trained foundation model—like Llama, Phi3, or BERT—to a specific task using your own annotated dataset. This process improves the model’s performance on domain-specific tasks such as customer support, question answering, or text classification. The key steps include loading the pre-trained model and tokenizer, preparing and tokenizing the dataset (often using formats like Parquet for efficiency), and training the model using frameworks like Hugging Face Transformers. Techniques like QLoRA (Quantized Low-Rank Adaptation) can be applied to reduce memory usage and make fine-tuning large models more efficient. Once trained, the model is evaluated, saved, and optionally pushed to the Hugging Face Hub for easy sharing and deployment.
 
+
+**Available tools:**  
+
+- Hugging Face Transformers : Train and fine-tune models on custom datasets.
+- PEFT (Parameter Efficient Fine-Tuning) : Tools like QLoRA for efficient fine-tuning.
+- DeepSpeed : Optimizations for distributed training and memory-efficient fine-tuning.
+
+
 ---
 
 ### 🛠️ 2.6 Hyperparameter Tuning
@@ -361,6 +416,14 @@ Tune settings like learning rate, batch size.
 
 **Example:**  
 Use HyperOpt to find the best learning rate between 1e-5 and 1e-3.
+
+
+
+**Available tools:**  
+
+- Optuna : Distributed hyperparameter optimization framework.
+- Ray Tune : Scalable hyperparameter tuning library built on Ray.
+
 
 ---
 
@@ -380,6 +443,13 @@ def train_model():
 with DAG('llm_pipeline', schedule_interval='@daily', start_date=datetime(2024, 1, 1)) as dag:
     task_train = PythonOperator(task_id='train_model', python_callable=train_model)
 ```
+
+**Available tools:**  
+
+- Apache Airflow : Schedule and automate model training and evaluation pipelines.
+
+
+
 🔹 **Chapter 2 Summary: Model Pre-training and Fine-tuning**
 
 Chapter 2 focuses on transforming prepared data into usable features for training large language models (LLMs), selecting the right foundation model, and fine-tuning it to suit specific use cases. It covers essential steps such as tokenization, feature storage using tools like Feast for consistent access, and retrieving features for both training and real-time inference. The chapter explains how to choose from popular pre-trained models like Phi3, Llama, or Mistral based on performance and resource requirements. It also details the process of fine-tuning open-source models using annotated datasets and introduces hyperparameter tuning techniques—such as Grid Search, Random Search, and HyperOpt—to optimize model performance. Finally, it emphasizes automation through tools like Apache Airflow to streamline and scale the model development lifecycle efficiently.
@@ -546,6 +616,12 @@ Ensure no sensitive info is included in the training data.
 **Example:**  
 Scan for credit card numbers, emails before training.
 
+
+**Available tools:**  
+
+- Presidio : Detect and anonymize PII (Personally Identifiable Information).
+- Dataherald : AI-powered synthetic data generation and leakage detection.
+
 ---
 
 ### 🔐 3.2 Access Control
@@ -558,6 +634,13 @@ Implement **Role-Based Access Control (RBAC)**.
 - Admin: Can edit and deploy models
 - Developer: Can test and view
 - User: Can only interact with deployed models
+
+
+**Available tools:**  
+
+- Keycloak : Identity and access management system (supports RBAC).
+- Open Policy Agent (OPA) : Policy-as-code engine for enforcing access policies.
+
 
 ---
 
@@ -575,6 +658,13 @@ Measuring how well the model works using metrics like accuracy, F1 score, BLEU/R
 **Example:**  
 Use F1 score to evaluate how well the model answers questions.
 
+
+**Available tools:**  
+
+- MLflow : Track metrics, parameters, and artifacts during model development.
+- Weights & Biases (W&B) : Track experiments and visualize performance metrics.
+- Comet.ml : Experiment tracking and performance analysis.
+
 ---
 
 ### 🛡️ 3.4 Securing LLMs Against OWASP Risks
@@ -588,6 +678,13 @@ Protect against:
 
 **Example:**  
 Validate user inputs to reject malicious queries.
+
+
+**Available tools:**  
+
+- Plexiglass : Adversarial testing for LLMs against OWASP threats.
+- Giskard : Detect vulnerabilities such as bias, prompt injection, and hallucinations.
+- Langkit : Evaluate and monitor prompts/responses for security risks.
 
 ---
 
@@ -677,6 +774,13 @@ with DAG(
 
 ```
 
+
+**Available tools:**  
+
+- Evidently AI : Monitor data drift, model decay, and performance degradation.
+- WhyLogs : Real-time observability and monitoring of data quality and drift.
+
+
 ---
 
 ## 🔹 **Chapter 4: Inference, Serving, and Scalability**
@@ -700,6 +804,14 @@ Types of inference:
 
 **Example:**  
 Use quantized Phi3 on GPU for fast responses.
+
+
+**Available tools:**  
+
+- vLLM : High-throughput and low-latency LLM inference engine.
+- LMDeploy : Efficient deployment and serving of large language models.
+- Text Generation WebUI : Run and interact with LLMs locally via UI.
+
 
 ---
 
@@ -753,6 +865,12 @@ def generate_text(prompt: str, max_length: int = 50):
 
 ```
 
+**Available tools:**  
+
+- BentoML : Build, serve, and scale ML models with API endpoints.
+- FastAPI : Lightweight API server for deploying models in production.
+- Ray Serve : Scalable model serving framework built on top of Ray.
+
 
 
 ## 🔹 **Chapter 5: Monitoring**
@@ -771,6 +889,13 @@ Once a large language model (LLM) is deployed into production, it’s critical t
 **Example:**  
 Track response time and alert if it goes above 1 second.
 
+
+**Available tools:**  
+
+- Prometheus + Grafana : Monitor real-time metrics like latency, throughput, and error rates.
+- ELK Stack (Elasticsearch, Logstash, Kibana) : Logs and metric visualization.
+
+
 ---
 
 ### 🛠️ 5.2 Tools and Technologies
@@ -785,6 +910,13 @@ Track response time and alert if it goes above 1 second.
 
 **Example:**  
 Use ELK stack to visualize trends in response times.
+
+
+**Available tools:**  
+
+- Arize-Phoenix : Observability platform for LLMs (open-core).
+- Traceloop OpenLLMetry : OpenTelemetry-based observability for LLM apps.
+- Helicone : Open-source observability for LLM APIs.
 
 ---
 
@@ -805,6 +937,13 @@ Repeat the cycle:
 
 
 By integrating robust monitoring practices into your LLMOps pipeline, you ensure that your LLMs remain accurate, reliable, and aligned with business goals and ethical standards throughout their lifecycle.
+
+
+**Available tools:**  
+
+- Langfuse : Open-source tracing, prompt management, and evaluation platform.
+- Promptfoo : Test and evaluate prompts across multiple LLM providers.
+- Guardrails.io : Validate and guardrail LLM outputs for correctness and safety.
 
 ---
 
