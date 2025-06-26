@@ -36,6 +36,7 @@
     * [Data Preparation](#data-preparation)
     * [Automation Pipeline](#automation-pipeline)
     * [Inference with safety control](#inference-with-safety-control)
+  * [References](#references)
 <!-- TOC -->
 
 
@@ -975,4 +976,12 @@ Create a Pipelines workflow to automate the fine-tuning of an open-source LLM us
 Deploy the fine-tuned model via a REST API using FastAPI.
 
 
+## References
 
+- [Essential Guide to LLMOps](https://www.oreilly.com/library/view/essential-guide-to/9781835887509/)
+
+- [Awesome LLMOps Github Repository](https://github.com/tensorchord/Awesome-LLMOps)
+
+- [LLMOPs course in DeepLearning.ai website](https://learn.deeplearning.ai/courses/llmops/lesson/jupuw/introduction)
+
+- [Sample fine-tuned LLM model](https://huggingface.co/hamedasgari20/stackoverflow-flan-t5-small)
