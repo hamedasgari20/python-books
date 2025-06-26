@@ -32,6 +32,10 @@
     * [🛠️ 5.2 Tools and Technologies](#-52-tools-and-technologies)
     * [🔁 5.3 Continuous Improvement](#-53-continuous-improvement)
   * [✅ **Conclusion**](#-conclusion)
+  * [🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for Stack Overflow Q&A](#-llmops-project-fine-tuning-and-deploying-an-llm-for-stack-overflow-qa)
+    * [Data Preparation](#data-preparation)
+    * [Automation Pipeline](#automation-pipeline)
+    * [Inference with safety control](#inference-with-safety-control)
 <!-- TOC -->
 
 
@@ -950,4 +954,25 @@ By integrating robust monitoring practices into your LLMOps pipeline, you ensure
 ## ✅ **Conclusion**
 
 This booklet walks you through the full lifecycle of building and managing large language models using **LLMOps**. From collecting and preparing data to deploying and monitoring models, you now have a practical roadmap to build scalable, secure, and high-performing AI systems.
+
+## 🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for Stack Overflow Q&A
+
+This project demonstrates a simple LLMOps pipeline for training, automating, and deploying a Large Language Model (LLM) tailored to answer Python-related questions from Stack Overflow.
+
+
+
+This project is divided into three main sections:
+
+
+### Data Preparation
+Extract relevant question-answer pairs from the Stack Overflow Public Dataset on BigQuery, prepare them for training, and split into train and evaluation sets.
+
+### Automation Pipeline
+Create a Pipelines workflow to automate the fine-tuning of an open-source LLM using the prepared dataset and pushing the trained model to Huggingface.
+
+### Inference with safety control
+
+Deploy the fine-tuned model via a REST API using FastAPI.
+
+
 

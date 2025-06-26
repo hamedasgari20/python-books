@@ -1,0 +1,15 @@
+pandas
+google-cloud-bigquery
+scikit-learn
+transformers
+peft
+bitsandbytes
+kfp
+fastapi
+uvicorn
+langkit
+db-dtypes
+datasets
+sentencepiece
+huggingface_hub[hf_xet]
+plexiglass
