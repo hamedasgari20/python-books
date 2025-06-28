@@ -29,6 +29,7 @@
     * [🚀 4.2 Optimizing Model Serving for Performance](#-42-optimizing-model-serving-for-performance)
   * [🔹 **Chapter 5: Monitoring**](#-chapter-5-monitoring)
     * [📉 5.1 Monitoring LLM Metrics](#-51-monitoring-llm-metrics)
+      * [📊 5.1.1 Enhanced: Monitoring with Langfuse + DeepEval](#-511-enhanced-monitoring-with-langfuse--deepeval)
     * [🛠️ 5.2 Tools and Technologies](#-52-tools-and-technologies)
     * [🔁 5.3 Continuous Improvement](#-53-continuous-improvement)
   * [✅ **Conclusion**](#-conclusion)
@@ -901,6 +902,51 @@ Track response time and alert if it goes above 1 second.
 - ELK Stack (Elasticsearch, Logstash, Kibana) : Logs and metric visualization.
 
 
+#### 📊 5.1.1 Enhanced: Monitoring with Langfuse + DeepEval
+
+**🔍 Why Use Langfuse + DeepEval?**
+While tools like Prometheus + Grafana and the ELK Stack are great for system-level metrics (e.g., latency, throughput), they don’t directly measure the quality of LLM outputs , such as:
+
+- Accuracy
+- Relevance
+- Toxicity
+- Hallucinations
+- Bias
+
+This is where Langfuse and DeepEval come in — they provide LLM-specific observability and evaluation capabilities , allowing you to monitor and improve model performance continuously.
+
+**🧠 What Is Langfuse?**
+Langfuse is an open-source observability platform for LLM applications that helps you:
+
+- Trace prompts and responses
+- Monitor usage and cost
+- Debug chains and agents
+- Visualize traces and logs
+- Evaluate response quality using custom or built-in scorers
+
+It works well with frameworks like LangChain , LlamaIndex , and FastAPI-based services.
+
+**🔍 What Is DeepEval?**
+
+DeepEval is an open-source framework for evaluating LLM outputs based on multiple dimensions such as:
+
+- Answer Relevance
+- Contextual Precision & Recall
+- Faithfulness (Hallucination Detection)
+- Toxicity
+- Bias
+- Summarization Quality (ROUGE, BLEU)
+
+It integrates with Langfuse to log evaluations automatically and can be used in testing pipelines or real-time inference monitoring.
+
+By integrating Langfuse and DeepEval , you gain full-stack visibility into both:
+
+- Operational metrics (latency, error rate, tokens/sec)
+- Quality metrics (relevance, hallucination, toxicity)
+
+This makes your LLM deployment more transparent, reliable, and enterprise-ready , which is essential for real-world LLMOps implementations.-
+
+
 ---
 
 ### 🛠️ 5.2 Tools and Technologies
@@ -979,6 +1025,7 @@ Deploy the fine-tuned model via a REST API using FastAPI.
 ## References
 
 - [Essential Guide to LLMOps](https://www.oreilly.com/library/view/essential-guide-to/9781835887509/)
+- [Building LLM Powered Applications](https://www.packtpub.com/en-si/product/building-llm-powered-applications-9781835462317)
 
 - [Awesome LLMOps Github Repository](https://github.com/tensorchord/Awesome-LLMOps)
 
