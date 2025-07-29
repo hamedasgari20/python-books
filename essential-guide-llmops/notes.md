@@ -592,26 +592,93 @@ Implement **Role-Based Access Control (RBAC)**.
 
 ### 📊 3.3 Review Performance Metrics Offline
 
-Measuring how well the model works using metrics like accuracy, F1 score, BLEU/ROUGE for translation, and readability scores for conversational models.
+Measuring how well the model works using metrics like accuracy, F1 score, BLEU/ROUGE for translation, and readability scores for conversational models is essential before deploying any LLM. This offline evaluation ensures that:
 
-| Task Type | Metric |
-|----------|--------|
-| Classification | Accuracy, F1 Score |
-| Translation/Summarization | BLEU, ROUGE, Perplexity |
-| Multi-label | Hamming Loss, Precision@K |
-| Conversational | Flesch Reading Ease |
+- The model generalizes well to unseen data.
 
-**Example:**  
-Use F1 score to evaluate how well the model answers questions.
+- Performance meets quality thresholds.
+
+- There is no regression from previous versions.
+
+By evaluating models before deployment, teams can catch issues like overfitting, poor instruction-following, or degraded output quality — critical for compliance and governance.
 
 
-**Available tools:**  
+#### 🔍 Adding Evaluation in LLaMA-Factory
 
-- MLflow : Track metrics, parameters, and artifacts during model development.
-- Weights & Biases (W&B) : Track experiments and visualize performance metrics.
-- Comet.ml : Experiment tracking and performance analysis.
 
----
+LLaMA-Factory supports built-in evaluation during and after training using a held-out validation dataset. It logs key metrics such as:
+
+- `eval_loss`: Measures prediction error on the evaluation set.
+- `eval_perplexity`: Indicates how well the model predicts the next token (lower = better).
+- `training_loss`: For comparison with eval loss to detect overfitting.
+
+
+You can configure evaluation directly in your training script by enabling `do_eval=True` and specifying an evaluation dataset.
+
+✅ Step-by-Step: Enable Evaluation in LLaMA-Factory
+
+1- Prepare a separate evaluation dataset
+Create a file like `identity_eval.json` in `/LLaMA-Factory/data/`:
+
+
+```json
+[
+  {
+    "instruction": "بورس کالای ایران چیست؟",
+    "input": "",
+    "output": "بورس کالای ایران بازاری سازمان‌یافته و رسمی است که در آن کالاهای مختلف تحت نظارت معامله می‌شوند."
+  },
+  {
+    "instruction": "آیا می‌توانم به صورت آنلاین معامله کنم؟",
+    "input": "",
+    "output": "بله، در صورتی که دسترسی به درگاه معاملات برخط داشته باشید، می‌توانید آنلاین معامله کنید."
+  }
+]
+
+```
+
+2- Update your training configuration to include evaluation:
+
+```python
+args = dict(
+    stage="sft",
+    do_train=True,
+    do_eval=True,                        # ✅ Enable evaluation
+    model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit",
+    dataset="identity",                  # Training dataset
+    eval_dataset="identity_eval",        # 👈 Evaluation dataset
+    template="llama3",
+    finetuning_type="lora",
+    output_dir="llama3_lora_identity_final",
+    per_device_train_batch_size=2,
+    per_device_eval_batch_size=2,        # Batch size for eval
+    learning_rate=2e-5,
+    num_train_epochs=3,
+    eval_steps=10,                       # Run eval every 10 steps
+    evaluation_strategy="steps",
+    save_total_limit=2,
+    load_best_model_at_end=True,         # Save best model based on metric
+    metric_for_best_model="eval_loss",   # Choose best model by lowest loss
+    greater_is_better=False,
+    fp16=True,
+    report_to="mlflow",                  # Log to MLflow (or "wandb")
+)
+```
+3- Run training — evaluation will happen automatically:
+
+```python
+llamafactory-cli train llama3_lora_identity_final.json
+```
+4- View results in logs or integrated tools:
+
+```python
+[INFO] Step 10: eval_loss = 1.87, eval_perplexity = 6.48
+[INFO] Step 20: eval_loss = 1.52, eval_perplexity = 4.57
+```
+
+#### Available tools:
+
+DeepEval (Recommended for advanced metrics): Evaluate faithfulness, relevance, toxicity — ideal for governance reporting.
 
 ### 🛡️ 3.4 Securing LLMs Against OWASP Risks
 
