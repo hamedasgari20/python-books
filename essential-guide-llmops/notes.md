@@ -32,6 +32,7 @@
   * [🔹 **Chapter 5: Monitoring**](#-chapter-5-monitoring)
     * [📉 5.1 Monitoring LLM Metrics](#-51-monitoring-llm-metrics)
       * [📊 5.1.1 Enhanced: Monitoring with Langfuse + DeepEval](#-511-enhanced-monitoring-with-langfuse--deepeval)
+    * [✅ Practical: Using DeepEval Unit Tests for LLM Quality Assurance](#-practical-using-deepeval-unit-tests-for-llm-quality-assurance)
     * [🛠️ 5.2 Tools and Technologies](#-52-tools-and-technologies)
     * [🔁 5.3 Continuous Improvement](#-53-continuous-improvement)
   * [✅ **Conclusion**](#-conclusion)
@@ -938,6 +939,68 @@ By integrating Langfuse and DeepEval , you gain full-stack visibility into both:
 
 This makes your LLM deployment more transparent, reliable, and enterprise-ready , which is essential for real-world LLMOps implementations.-
 
+
+
+### ✅ Practical: Using DeepEval Unit Tests for LLM Quality Assurance
+
+🧪 Why Use DeepEval Unit Tests?
+While latency and system health metrics tell you if your app is running, DeepEval unit tests tell you how well your LLM is performing — on real-world tasks like answering questions, summarizing content, or generating accurate responses.
+
+By writing DeepEval tests, you can define expected LLM behavior and automatically check:
+
+- ✅ Relevance of answers to the question
+
+- ✅ Faithfulness (low hallucination)
+
+- ✅ Toxicity and bias checks
+
+- ✅ Accuracy based on a gold reference
+
+🔧 How It Works
+
+1- Define your test cases: Create a set of input prompts and expected behaviors (outputs, scores, etc.).
+
+2- Write DeepEval unit tests: Use Python (e.g., with pytest) to evaluate your LLM outputs against defined expectations.
+
+3- Run tests automatically during CI/CD (e.g., GitHub Actions).
+
+4- Only allow merging if tests pass: Just like regular software tests, treat LLM quality tests as a quality gate.
+
+🧰 Example: DeepEval Test with pytest
+
+```python
+from deepeval import assert_test, RelevanceMetric
+from your_llm_app import generate_answer  # your LLM inference function
+
+def test_faq_answer_relevance():
+    prompt = "بورس کالای ایران چیست؟"
+    expected = "بازاری سازمان‌یافته و رسمی..."
+
+    output = generate_answer(prompt)
+
+    assert_test(
+        name="Relevance Test - What is Iran Mercantile Exchange",
+        actual_output=output,
+        expected_output=expected,
+        metrics=[RelevanceMetric(threshold=0.7)]
+    )
+
+```
+You can add other metrics like **FaithfulnessMetric**, **ToxicityMetric**, etc., based on your use case.
+
+
+🧩 DeepEval + CI/CD Merge Gate
+Then you can integrate DeepEval tests into your release pipeline (GitHub Actions, GitLab CI, etc.)
+
+🎯 Benefits
+
+- Prevents releasing LLM models that produce bad or harmful outputs
+
+- Catches regressions after prompt/template changes or model updates
+
+- Makes LLM testing repeatable, automated, and measurable
+
+- Adds trust and transparency for users and stakeholders
 
 ---
 
