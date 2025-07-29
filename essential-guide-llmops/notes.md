@@ -731,14 +731,14 @@ with DAG(
 
 ## 🔹 **Chapter 4: Inference, Serving, and Scalability**
 
-The purpose of this chapter is to guide you through the process of deploying and operating large language models (LLMs) in production environments . This chapter focuses on how to make your model accessible and efficient for real-world use while ensuring it scales well under varying workloads.
+This chapter guides you through deploying and running fine-tuned large language models (LLMs) in real-world settings using modern tools like LLaMA-Factory and Streamlit. You’ll learn how to make models interactive, fast, and scalable for production use cases.
 
 ### ⚡ 4.1 Operationalizing Inference Models
 
 Types of inference:
-- **Real-time**
-- **Batch**
-- **Interactive**
+- **Real-time**: Immediate responses for interactive applications like chatbots.
+- **Batch**: Processing large datasets periodically or on demand.
+- **Interactive**: Dynamic conversations with streaming output, ideal for assistants.
 
 **Model Optimization:**
 - Pruning: Pruning is the process of removing unnecessary or less important neurons, weights, or layers from a neural network to reduce its size and computational requirements — without significantly affecting its performance.
@@ -749,73 +749,55 @@ Types of inference:
 - TPU for cost-efficiency
 
 **Example:**  
-Use quantized Phi3 on GPU for fast responses.
+Load unsloth/llama-3-8b-Instruct-bnb-4bit using 4-bit quantization for minimal memory footprint on consumer GPUs.
 
+### 🤖 4.2 Running LLaMA-Factory Models with Streamlit
 
-**Available tools:**  
-
-- vLLM : High-throughput and low-latency LLM inference engine.
-- LMDeploy : Efficient deployment and serving of large language models.
-- Text Generation WebUI : Run and interact with LLMs locally via UI.
-
-
----
-
-### 🚀 4.2 Optimizing Model Serving for Performance
-
-Once a large language model (LLM) has been trained and fine-tuned, the next critical step is deploying it into production in a way that ensures fast, reliable, and scalable performance. This section focuses on techniques and architectures to optimize how models are served , especially under real-world conditions with high traffic and latency constraints.
-
-**Serving Architectures:**
-- Serverless (AWS Lambda)
-- Containerized (Docker)
-- Microservices
-
-You can deploy your LLM using different architectural patterns based on your scalability and latency needs:
-
-- Serverless (e.g., AWS Lambda, Azure Functions)
-Automatically scales with demand.
-Pay-per-use pricing model.
-Best for low-to-moderate traffic workloads.
-- Containerized (e.g., Docker + Kubernetes)
-Full control over scaling, versioning, and rollbacks.
-Can be deployed on-premises or in the cloud.
-Supports advanced features like A/B testing and canary deployments.
-- Microservices Architecture
-Breaks down the system into modular services (e.g., tokenizer service, inference engine, response generator).
-Highly scalable and maintainable.
-Works well with orchestration tools like Kubernetes.
-
-
-for instance we can dockerized the following API:
+Unlike traditional inference APIs that use Hugging Face pipelines, here we deploy a fine-tuned LLaMA-Factory model using a Streamlit interface with caching and memory optimization:
 
 ```python
 
-from fastapi import FastAPI
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import os
+import streamlit as st
+from llamafactory.chat import ChatModel
+from llamafactory.extras.misc import torch_gc
 
-# Replace with your model name from Hugging Face
-MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+# تغییر مسیر به دایرکتوری مدل
+os.chdir("/LLaMA-Factory")
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+# بارگذاری مدل با کش
+@st.cache_resource
+def load_model():
+    args = dict(
+        model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit",
+        # adapter_name_or_path="llama3_lora",
+        adapter_name_or_path="llama3_lora_identity_overfit",
+        # adapter_name_or_path="llama3_lora_identity_final",
+        template="llama3",
+        finetuning_type="lora",
+    )
+    return ChatModel(args)
 
-app = FastAPI()
+chat_model = load_model()
 
-@app.post("/generate")
-def generate_text(prompt: str, max_length: int = 50):
-    inputs = tokenizer(prompt, return_tensors="pt")
-    outputs = model.generate(**inputs, max_length=max_length)
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return {"response": response}
+# Persian RTL interface with chat streaming
+user_input = st.chat_input("پیام خود را بنویسید...")
+
+if user_input:
+    st.session_state.messages.append({"role": "user", "content": user_input})
+
+    with st.chat_message("assistant"):
+        response = ""
+        for chunk in chat_model.stream_chat(st.session_state.messages):
+            response += chunk
+            st.write(response + "▌")
 
 
 ```
 
-**Available tools:**  
+here is the sample generated UI:
 
-- BentoML : Build, serve, and scale ML models with API endpoints.
-- FastAPI : Lightweight API server for deploying models in production.
-- Ray Serve : Scalable model serving framework built on top of Ray.
+![](./images/ui.png)
 
 
 
