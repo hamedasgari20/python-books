@@ -17,26 +17,29 @@
     * [🧠 2.4 Selecting a Foundation Model](#-24-selecting-a-foundation-model)
     * [🎯 2.5 Fine-tuning an Open Source Model](#-25-fine-tuning-an-open-source-model)
     * [🛠️ 2.6 Hyperparameter Tuning](#-26-hyperparameter-tuning)
-    * [🔄 2.7 Automating Model Development Using Airflow DAG](#-27-automating-model-development-using-airflow-dag)
+    * [🔄 2.7 Automating Model Development Using Airflow DAG (with LLaMA-Factory)](#-27-automating-model-development-using-airflow-dag-with-llama-factory)
   * [🔹 **Chapter 3: Governance and Review**](#-chapter-3-governance-and-review)
     * [🚫 3.1 Avoiding Training Data Leakage](#-31-avoiding-training-data-leakage)
     * [🔐 3.2 Access Control](#-32-access-control)
     * [📊 3.3 Review Performance Metrics Offline](#-33-review-performance-metrics-offline)
+      * [🔍 Adding Evaluation in LLaMA-Factory](#-adding-evaluation-in-llama-factory)
+      * [Available tools:](#available-tools)
     * [🛡️ 3.4 Securing LLMs Against OWASP Risks](#-34-securing-llms-against-owasp-risks)
     * [📈 3.5 Operationalizing Compliance and Performance](#-35-operationalizing-compliance-and-performance)
   * [🔹 **Chapter 4: Inference, Serving, and Scalability**](#-chapter-4-inference-serving-and-scalability)
     * [⚡ 4.1 Operationalizing Inference Models](#-41-operationalizing-inference-models)
-    * [🚀 4.2 Optimizing Model Serving for Performance](#-42-optimizing-model-serving-for-performance)
+    * [🤖 4.2 Running LLaMA-Factory Models with Streamlit](#-42-running-llama-factory-models-with-streamlit)
   * [🔹 **Chapter 5: Monitoring**](#-chapter-5-monitoring)
     * [📉 5.1 Monitoring LLM Metrics](#-51-monitoring-llm-metrics)
       * [📊 5.1.1 Enhanced: Monitoring with Langfuse + DeepEval](#-511-enhanced-monitoring-with-langfuse--deepeval)
     * [🛠️ 5.2 Tools and Technologies](#-52-tools-and-technologies)
     * [🔁 5.3 Continuous Improvement](#-53-continuous-improvement)
   * [✅ **Conclusion**](#-conclusion)
-  * [🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for Stack Overflow Q&A](#-llmops-project-fine-tuning-and-deploying-an-llm-for-stack-overflow-qa)
+  * [🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for ChatBot](#-llmops-project-fine-tuning-and-deploying-an-llm-for-chatbot)
     * [Data Preparation](#data-preparation)
     * [Automation Pipeline](#automation-pipeline)
     * [Inference with safety control](#inference-with-safety-control)
+  * [Future research](#future-research)
   * [References](#references)
 <!-- TOC -->
 
@@ -991,7 +994,7 @@ By integrating robust monitoring practices into your LLMOps pipeline, you ensure
 
 This booklet walks you through the full lifecycle of building and managing large language models using **LLMOps**. From collecting and preparing data to deploying and monitoring models, you now have a practical roadmap to build scalable, secure, and high-performing AI systems.
 
-## 🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for Stack Overflow Q&A
+## 🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for ChatBot
 
 This project demonstrates a simple LLMOps pipeline for training, automating, and deploying a Large Language Model (LLM) tailored to answer Python-related questions from Stack Overflow.
 
@@ -1010,6 +1013,9 @@ Create a Pipelines workflow to automate the fine-tuning of an open-source LLM us
 
 Deploy the fine-tuned model via a REST API using FastAPI.
 
+## Future research
+
+Using the pre-trained Llama model in a RAG system instead of fine-tuning the Llama model and comparing the results with the results of the present study
 
 ## References
 
@@ -1021,3 +1027,4 @@ Deploy the fine-tuned model via a REST API using FastAPI.
 - [LLMOPs course in DeepLearning.ai website](https://learn.deeplearning.ai/courses/llmops/lesson/jupuw/introduction)
 
 - [Sample fine-tuned LLM model](https://huggingface.co/hamedasgari20/stackoverflow-flan-t5-small)
+
