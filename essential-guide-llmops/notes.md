@@ -390,6 +390,19 @@ subprocess.run(["llamafactory-cli", "train", "llama3_lora_identity_final.json"])
 ```
 Fine-tuning with LLaMA-Factory offers a more streamlined and scalable way to adapt open-source LLMs like LLaMA-3 or Mistral using modern techniques like LoRA or QLoRA. It handles prompt formatting, tokenizer setup, and trainer orchestration out of the box—making it ideal for efficient, low-resource instruction tuning.
 
+Here is a sample metrics after fine tuning
+
+```python
+***** train metrics *****
+  epoch                    =        4.0
+  total_flos               = 34081760GF
+  train_loss               =     1.7529
+  train_runtime            = 0:32:47.09
+  train_samples_per_second =      3.933
+  train_steps_per_second   =      0.984
+
+```
+
 
 ---
 
