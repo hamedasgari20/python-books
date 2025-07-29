@@ -273,6 +273,7 @@ store.ingest("llm_training_features", df)
 
 - Feast : Feature store for managing features used in ML models.
 - Hopsworks Feature Store : Another enterprise-grade feature store with open-source core.
+- Qdrant: Vector database often used as a feature store for storing and retrieving high-dimensional embeddings in ML and AI applications.
 
 
 ---
@@ -320,110 +321,71 @@ Use Phi3 for a lightweight customer service bot.
 ### 🎯 2.5 Fine-tuning an Open Source Model
 
 > **Description:**  
-> Fine-tuning adapts a pre-trained foundation model to your specific dataset and task, improving its performance for your use case. This section outlines the steps to customize open source models using your own annotated data, enabling more accurate and relevant results.
+> Fine-tuning adapts a pre-trained foundation model to your specific dataset and task, improving its performance for your use case. This section outlines the steps to customize open-source models using your own annotated data with the LLaMA-Factory framework — a powerful and flexible tool for training and instruction-tuning LLMs like LLaMA, Mistral, Phi, and more.
 
-Train the model on your dataset.
+Fine-tune your model using a structured config and CLI with LLaMA-Factory.
 
-**Steps:**
-1. Load model and tokenizer
-2. Train using annotated prompts
-3. Save model to Hugging Face Hub
+Steps:
+
+1- Install LLaMA-Factory
+
+2- Prepare your dataset in JSON (instruction format)
+
+3- Write your training configuration
+
+4- Run training via CLI
 
 **Example:**
 ```python
 
-# Step 1: Import necessary libraries
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from datasets import Dataset
-import torch
+import json
+import os
+import subprocess
 
-# Step 2: Load tokenizer and quantized base model (e.g., Llama-3)
-model_name = "meta-llama/Llama-3-8b"  # Replace with any HuggingFace-compatible Llama model
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+# Step 1: Define training arguments with detailed descriptions
+args = dict(
+    stage="sft",  # Stage of training: 'sft' means supervised fine-tuning (instruction tuning)
+    do_train=True,  # Flag to enable training
+    model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit",  # Path or model name from Hugging Face to use as the base model
+    dataset="identity",  # Name of your dataset or path to your dataset (must be in supported format like JSON or JSONL)
+    template="llama3",  # Prompt template style to format instruction/input/output (e.g., llama3, alpaca, chatml)
+    finetuning_type="lora",  # Type of parameter-efficient fine-tuning method (e.g., lora, full, qlora)
+    lora_target="q_proj,v_proj",  # Target layers to apply LoRA on (commonly attention projection layers)
 
-# Set padding token
-tokenizer.pad_token = tokenizer.eos_token
+    output_dir="llama3_lora_identity_final",  # Directory to save the trained model and checkpoints
+    per_device_train_batch_size=2,  # Batch size per GPU
+    gradient_accumulation_steps=2,  # Accumulate gradients over this many steps before backpropagation
+    lr_scheduler_type="cosine",  # Learning rate scheduler type (e.g., linear, cosine, constant)
+    warmup_ratio=0.1,  # Fraction of total steps used for learning rate warm-up
 
-# Load model with 4-bit quantization using bitsandbytes
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    device_map="auto",
-    load_in_4bit=True,
-    torch_dtype=torch.bfloat16
+    logging_steps=1,  # Log training metrics every N steps
+    save_steps=10,  # Save model checkpoint every N steps
+    save_total_limit=2,  # Maximum number of saved checkpoints (older ones deleted)
+    
+    learning_rate=2e-5,  # Initial learning rate
+    num_train_epochs=20,  # Number of full training epochs
+    max_samples=50,  # Max number of samples to use from the dataset (useful for debugging or quick runs)
+    max_grad_norm=1.0,  # Gradient clipping threshold to prevent exploding gradients
+    
+    loraplus_lr_ratio=4.0,  # Optional ratio to scale LoRA layers' learning rate compared to base learning rate
+    fp16=True,  # Use 16-bit floating point precision for training (saves memory, speeds up training)
+    report_to="none",  # Disable logging to external tools (like WandB or TensorBoard)
 )
 
-# Prepare model for QLoRA training
-model = prepare_model_for_kbit_training(model)
+# Step 2: Save training config
+with open("llama3_lora_identity_final.json", "w", encoding="utf-8") as f:
+    json.dump(args, f, indent=2)
 
-# Define LoRA configuration
-config = LoraConfig(
-    r=8,  # Rank of the adaptation matrix
-    lora_alpha=16,
-    target_modules=["q_proj", "v_proj"],  # Apply LoRA to attention layers
-    lora_dropout=0.1,
-    bias="none",
-    task_type="CAUSAL_LM"
-)
+# Step 3: Change to LLaMA-Factory directory (update this path to match your setup)
+os.chdir("/LLaMA-Factory")
 
-# Apply LoRA to the model
-model = get_peft_model(model, config)
+# Step 4: Run training using the LLaMA-Factory CLI
+subprocess.run(["llamafactory-cli", "train", "llama3_lora_identity_final.json"])
 
-# Step 3: Prepare dataset (replace with your own data)
-# Sample annotated prompt/response pairs from 1.4
-data = {
-    "text": [
-        "[Context] If you've forgotten your password...\n[Question] How can I reset my password?\n[Answer] To reset your password...",
-        "[Context] Your order is on its way.\n[Question] Where is my order?\n[Answer] Your order is currently in transit.",
-    ]
-}
 
-dataset = Dataset.from_dict(data)
-
-# Tokenize the dataset
-def tokenize_function(examples):
-    return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=512)
-
-tokenized_dataset = dataset.map(tokenize_function, batched=True)
-
-# Step 4: Define training arguments
-training_args = TrainingArguments(
-    output_dir="./llama_finetuned",
-    per_device_train_batch_size=1,
-    gradient_accumulation_steps=4,
-    learning_rate=2e-4,
-    num_train_epochs=3,
-    logging_dir="./logs",
-    logging_steps=10,
-    save_strategy="epoch",
-    push_to_hub=True,
-    hub_model_id="my_customer_bot_llama",  # Model name on Hugging Face
-    report_to="none"
-)
-
-# Step 5: Create Trainer and start training
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=tokenized_dataset,
-)
-
-print("Starting QLoRA fine-tuning...")
-trainer.train()
-
-# Step 6: Save and push to Hugging Face Hub
-print("Pushing model to Hugging Face Hub...")
-trainer.push_to_hub()
 
 ```
-Fine-tuning an open-source model involves adapting a pre-trained foundation model—like Llama, Phi3, or BERT—to a specific task using your own annotated dataset. This process improves the model’s performance on domain-specific tasks such as customer support, question answering, or text classification. The key steps include loading the pre-trained model and tokenizer, preparing and tokenizing the dataset (often using formats like Parquet for efficiency), and training the model using frameworks like Hugging Face Transformers. Techniques like QLoRA (Quantized Low-Rank Adaptation) can be applied to reduce memory usage and make fine-tuning large models more efficient. Once trained, the model is evaluated, saved, and optionally pushed to the Hugging Face Hub for easy sharing and deployment.
-
-
-**Available tools:**  
-
-- Hugging Face Transformers : Train and fine-tune models on custom datasets.
-- PEFT (Parameter Efficient Fine-Tuning) : Tools like QLoRA for efficient fine-tuning.
-- DeepSpeed : Optimizations for distributed training and memory-efficient fine-tuning.
+Fine-tuning with LLaMA-Factory offers a more streamlined and scalable way to adapt open-source LLMs like LLaMA-3 or Mistral using modern techniques like LoRA or QLoRA. It handles prompt formatting, tokenizer setup, and trainer orchestration out of the box—making it ideal for efficient, low-resource instruction tuning.
 
 
 ---
