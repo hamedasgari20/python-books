@@ -146,11 +146,28 @@ Automate data collection and cleaning using **cron jobs**.
 
 **Final Output:** Annotated prompt like this:
 ```
-[Context] If you've forgotten your password...
-[Question] How can I reset my password?
-[Answer] To reset your password...
-####
+[
+  {
+    "instruction": "بورس کالای ایران چیست؟",
+    "input": "",
+    "output": "بورس کالای ایران بازاری سازمان‌یافته و رسمی است که در آن کالاهای مختلف از جمله محصولات کشاورزی، صنعتی، معدنی و پتروشیمی (همچون زعفران، زیره، فلزات، فرآورده‌های نفتی و غیره) تحت نظارت و قوانین مشخص معامله می‌شوند.."
+  },
+  {
+    "instruction": "آیا می‌توانم به صورت آنلاین در بورس کالا معامله کنم؟",
+    "input": "",
+    "output": "بله، در صورتی که مشتری دسترسی به درگاه معاملات برخط داشته باشد، می‌تواند به صورت آنلاین اقدام به معامله نمایند ​."
+  },
+  {
+    "instruction": "فهرست نام و شماره تماس کارگزاری های دارای مجوز انجام معامله در کالای مورد نظر مشتری کجا وجود دارد؟",
+    "input": "",
+    "output": "در سایت بورس کالای ایران به نشانی : www.ime.co.ir"
+  }
+]
 ```
+
+This dataset is in a standard and widely accepted format (Alpaca-style) and is suitable for:
+
+Fine-tuning LLaMA-based models (e.g., LLaMA, Vicuna, Mistral, Zephyr, etc.)
 
 **Example cron job:**
 ```bash
