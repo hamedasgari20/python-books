@@ -1045,22 +1045,20 @@ This booklet walks you through the full lifecycle of building and managing large
 
 ## 🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for ChatBot
 
-This project demonstrates a simple LLMOps pipeline for training, automating, and deploying a Large Language Model (LLM) tailored to answer Python-related questions from Stack Overflow.
+This project demonstrates a simple LLMOps pipeline for training, automating, and deploying a Large Language Model (LLM)
 
 
 
-This project is divided into three main sections:
+This project is divided into some main sections:
 
 
-### Data Preparation
-Extract relevant question-answer pairs from the Stack Overflow Public Dataset on BigQuery, prepare them for training, and split into train and evaluation sets.
 
 ### Automation Pipeline
-Create a Pipelines workflow to automate the fine-tuning of an open-source LLM using the prepared dataset and pushing the trained model to Huggingface.
+Create a Pipelines workflow to automate the fine-tuning of an open-source LLM using the prepared dataset.
 
-### Inference with safety control
+### Inference
 
-Deploy the fine-tuned model via a REST API using FastAPI.
+Deploy the fine-tuned model via Streamlit.
 
 ## Future research
 
