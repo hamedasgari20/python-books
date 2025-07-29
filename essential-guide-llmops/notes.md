@@ -412,46 +412,22 @@ Use HyperOpt to find the best learning rate between 1e-5 and 1e-3.
 
 ---
 
-### 🔄 2.7 Automating Model Development Using Airflow DAG
+### 🔄 2.7 Automating Model Development Using Airflow DAG (with LLaMA-Factory)
 
-Use **Airflow** or **Prefect** to schedule and automate your training pipeline.
+Use Airflow or Prefect to schedule and automate your LLM training pipeline. This updated DAG integrates LLaMA-Factory for fine-tuning large language models such as LLaMA 3 using your own dataset and training configuration.
+
 
 **Example DAG:**
 ```python
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime
-
-def train_model():
-    print("Training model...")
-
-with DAG('llm_pipeline', schedule_interval='@daily', start_date=datetime(2024, 1, 1)) as dag:
-    task_train = PythonOperator(task_id='train_model', python_callable=train_model)
-```
-
-**Available tools:**  
-
-- Apache Airflow : Schedule and automate model training and evaluation pipelines.
-
-
-
-🔹 **Chapter 2 Summary: Model Pre-training and Fine-tuning**
-
-Chapter 2 focuses on transforming prepared data into usable features for training large language models (LLMs), selecting the right foundation model, and fine-tuning it to suit specific use cases. It covers essential steps such as tokenization, feature storage using tools like Feast for consistent access, and retrieving features for both training and real-time inference. The chapter explains how to choose from popular pre-trained models like Phi3, Llama, or Mistral based on performance and resource requirements. It also details the process of fine-tuning open-source models using annotated datasets and introduces hyperparameter tuning techniques—such as Grid Search, Random Search, and HyperOpt—to optimize model performance. Finally, it emphasizes automation through tools like Apache Airflow to streamline and scale the model development lifecycle efficiently.
-
-Below is a simple Apache Airflow DAG that automates the end-to-end LLM pipeline based on your knowledge base.
-
-```python
-# File: llm_pipeline_dag.py
-from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
-from datetime import datetime
+import json
+import subprocess
+import os
 import pandas as pd
 from pyspark.sql import SparkSession
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
-from hyperopt import hp, fmin, tpe
-import torch
-from peft import LoraConfig, get_peft_model
+from pyspark.sql.functions import regexp_replace, lower, col
 
 # Step 1: Simulate data collection and cleaning using PySpark
 def collect_and_clean_data(**kwargs):
@@ -460,96 +436,78 @@ def collect_and_clean_data(**kwargs):
 
     cleaned_df = df.withColumn(
         "cleaned_text",
-        regexp_replace(lower(col("raw_text")), "[^a-zA-Z0-9\\s]", "")
+        regexp_replace(lower(col("raw_text")), "[^a-zA-Z0-9\u0600-\u06FF\s]", "")  # Persian-friendly regex
     )
     cleaned_df.write.mode("overwrite").parquet("/path/to/cleaned_data.parquet")
     print("✅ Data cleaned and saved.")
 
-# Step 2: Tokenize text for model training
-def create_features(**kwargs):
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+# Step 2: Convert cleaned data to LLaMA-Factory instruction format
+def prepare_llama_dataset(**kwargs):
     df = pd.read_parquet("/path/to/cleaned_data.parquet")
 
-    def tokenize(text):
-        return tokenizer(text, max_length=512, padding='max_length', truncation=True)
+    examples = []
+    for row in df.itertuples():
+        examples.append({
+            "instruction": row.cleaned_text,  # Or use more structure if available
+            "input": "",
+            "output": "پاسخ به سوال ..."  # Replace with real labels/answers
+        })
 
-    tokenized_inputs = df['cleaned_text'].apply(tokenize)
-    df['input_ids'] = [x['input_ids'] for x in tokenized_inputs]
-    df['attention_mask'] = [x['attention_mask'] for x in tokenized_inputs]
-    df.to_parquet("/path/to/tokenized_data.parquet")
-    print("✅ Features created and saved.")
+    with open("/LLaMA-Factory/data/identity.json", "w", encoding="utf-8") as f:
+        json.dump(examples, f, ensure_ascii=False, indent=2)
+    print("✅ Dataset formatted for LLaMA-Factory.")
 
-# Step 3: Fine-tune model with QLoRA
-def fine_tune_model(**kwargs):
-    model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-
-    # Apply QLoRA
-    peft_config = LoraConfig(
-        r=8,
-        lora_alpha=16,
-        target_modules=["query", "value"],
-        lora_dropout=0.1,
-        bias="none",
-        task_type="SEQ_CLS"
-    )
-    model = get_peft_model(model, peft_config)
-
-    df = pd.read_parquet("/path/to/tokenized_data.parquet")
-    dataset = Dataset.from_pandas(df)
-
-    training_args = TrainingArguments(
-        output_dir="./llm_output",
-        per_device_train_batch_size=8,
+# Step 3: Write training config JSON for LLaMA-Factory
+def write_training_config(**kwargs):
+    args = dict(
+        stage="sft",
+        do_train=True,
+        model_name_or_path="unsloth/llama-3-8b-Instruct-bnb-4bit",
+        dataset="identity",
+        template="llama3",
+        finetuning_type="lora",
+        lora_target="q_proj,v_proj",
+        output_dir="llama3_lora_identity_final",
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=2,
+        lr_scheduler_type="cosine",
+        warmup_ratio=0.1,
+        logging_steps=1,
+        save_steps=10,
+        save_total_limit=2,
+        learning_rate=2e-5,
         num_train_epochs=3,
-        logging_steps=10,
-        save_strategy="no"
+        max_samples=200,  # Adjust based on dataset size
+        max_grad_norm=1.0,
+        loraplus_lr_ratio=4.0,
+        fp16=True,
+        report_to="none",
     )
+    with open("/LLaMA-Factory/llama3_lora_identity_final.json", "w", encoding="utf-8") as f:
+        json.dump(args, f, indent=2)
+    print("✅ LLaMA-Factory config saved.")
 
-    trainer = Trainer(model=model, args=training_args, train_dataset=dataset)
-    trainer.train()
-    trainer.save_model("./fine_tuned_model")
-    print("✅ Model fine-tuned and saved.")
+# Step 4: Run training using LLaMA-Factory CLI
+def run_llama_factory_training(**kwargs):
+    os.chdir("/LLaMA-Factory")
+    subprocess.run(["llamafactory-cli", "train", "llama3_lora_identity_final.json"])
+    print("✅ Fine-tuning completed using LLaMA-Factory.")
 
-# Step 4: Tune hyperparameters using HyperOpt
-def tune_hyperparameters(**kwargs):
-    def objective(params):
-        model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
-        training_args = TrainingArguments(
-            output_dir="./llm_output",
-            learning_rate=params['lr'],
-            per_device_train_batch_size=int(params['batch_size']),
-            num_train_epochs=int(params['epochs']),
-            logging_steps=10,
-            report_to="none"
-        )
-        trainer = Trainer(model=model, args=training_args, train_dataset=Dataset.from_dict({"text": ["test"] * 10}))
-        result = trainer.train()
-        return {'loss': result.training_loss, 'status': 'ok'}
-
-    space = {
-        'lr': hp.loguniform('lr', -11, -6),  # 1e-5 to 1e-3
-        'batch_size': hp.choice('batch_size', [8, 16]),
-        'epochs': hp.randint('epochs', 2, 5)
-    }
-
-    best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=5)
-    print("✅ Best hyperparameters:", best)
-
-# Step 5: Push final model to Hugging Face Hub
+# Step 5: Push fine-tuned model to Hugging Face (optional)
 def push_to_huggingface(**kwargs):
     from huggingface_hub import login
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
     login("your_hf_token")
+    model = AutoModelForCausalLM.from_pretrained("/LLaMA-Factory/llama3_lora_identity_final")
+    tokenizer = AutoTokenizer.from_pretrained("unsloth/llama-3-8b-Instruct-bnb-4bit")
+    model.push_to_hub("my_llama3_finetuned_model")
+    tokenizer.push_to_hub("my_llama3_finetuned_model")
+    print("✅ Model pushed to Hugging Face Hub.")
 
-    model = AutoModelForSequenceClassification.from_pretrained("./fine_tuned_model")
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    model.push_to_hub("my_customer_bot_model")
-    tokenizer.push_to_hub("my_customer_bot_model")
-    print("✅ Model pushed to Hugging Face.")
-
-# Define DAG
+# Define the DAG
 with DAG(
-    dag_id="llmops_pipeline",
+    dag_id="llmops_pipeline_llamafactory",
     schedule_interval="@daily",
     start_date=datetime(2024, 1, 1),
     catchup=False
@@ -560,19 +518,19 @@ with DAG(
         python_callable=collect_and_clean_data
     )
 
-    create_features_task = PythonOperator(
-        task_id="create_features",
-        python_callable=create_features
+    prepare_dataset = PythonOperator(
+        task_id="prepare_llama_dataset",
+        python_callable=prepare_llama_dataset
     )
 
-    fine_tune = PythonOperator(
-        task_id="fine_tune_model",
-        python_callable=fine_tune_model
+    create_config = PythonOperator(
+        task_id="write_training_config",
+        python_callable=write_training_config
     )
 
-    hyperparam_tune = PythonOperator(
-        task_id="hyperparameter_tuning",
-        python_callable=tune_hyperparameters
+    run_training = PythonOperator(
+        task_id="run_llama_factory_training",
+        python_callable=run_llama_factory_training
     )
 
     push_model = PythonOperator(
@@ -580,12 +538,15 @@ with DAG(
         python_callable=push_to_huggingface
     )
 
-    # Set task order
-    collect_data >> create_features_task >> fine_tune >> hyperparam_tune >> push_model
+    # Task dependencies
+    collect_data >> prepare_dataset >> create_config >> run_training >> push_model
+
 
 ```
 
+**Available tools:**  
 
+- Apache Airflow : Schedule and automate model training and evaluation pipelines.
 
 
 
