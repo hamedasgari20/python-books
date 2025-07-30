@@ -36,9 +36,8 @@
     * [🛠️ 5.2 Tools and Technologies](#-52-tools-and-technologies)
   * [✅ **Conclusion**](#-conclusion)
   * [🧠 LLMOPS Project: Fine-Tuning and Deploying an LLM for ChatBot](#-llmops-project-fine-tuning-and-deploying-an-llm-for-chatbot)
-    * [Data Preparation](#data-preparation)
     * [Automation Pipeline](#automation-pipeline)
-    * [Inference with safety control](#inference-with-safety-control)
+    * [Inference](#inference)
   * [Future research](#future-research)
   * [References](#references)
 <!-- TOC -->
