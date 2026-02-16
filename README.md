@@ -5,4 +5,6 @@
 
 - Essential Guide to LLMOps -  Ryan Doan [[open notes]](./essential-guide-llmops/notes.md)
 
+- Designing Data-Intensive Applications -  Martin Kleppmann [[open notes]](./designing-data-intensive-applications/notes.md)
+
 
