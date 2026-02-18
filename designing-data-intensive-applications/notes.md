@@ -48,6 +48,104 @@ where we dive into deep technical detail.
 
 
 ### CHAPTER 2
+Data models are perhaps the most important part of developing software, because
+they have such a profound effect: not only on how the software is written, but also on
+how we think about the problem that we are solving.
+In this chapter we will look at a range of general-purpose data models for data stor‐
+age and querying.  In particular, we will compare the relational model, the document model, and a few graph-based data models. We will
+also look at various query languages and compare their use cases.
+
+
+#### Relational Model Versus Document Model
+
+
+##### The Object-Relational Mismatch
+
+The JSON representation has better locality than the multi-table schema in Figure below. If you want to fetch a profile in the relational example, you need to either
+perform multiple queries (query each table by user_id) or perform a messy multi way join between the users table and its subordinate tables. In the JSON representation, all the relevant information is in one place, and one query is sufficient.
+
+```json
+{
+  "user_id": 251,
+  "first_name": "Bill",
+  "last_name": "Gates",
+  "summary": "Co-chair of the Bill & Melinda Gates... Active blogger.",
+  "region_id": "us:91",
+  "industry_id": 131,
+  "photo_url": "/p/7/000/253/05b/308dd6e.jpg",
+  "positions": [
+    {
+      "job_title": "Co-chair",
+      "organization": "Bill & Melinda Gates Foundation"
+    },
+    {
+      "job_title": "Co-founder, Chairman",
+      "organization": "Microsoft"
+    }
+  ],
+  "education": [
+    {
+      "school_name": "Harvard University",
+      "start": 1973,
+      "end": 1975
+    },
+    {
+      "school_name": "Lakeside School, Seattle",
+      "start": null,
+      "end": null
+    }
+  ],
+  "contact_info": {
+    "blog": "http://thegatesnotes.com",
+    "twitter": "http://twitter.com/BillGates"
+  }
+}
+```
+
+
+##### Many-to-One and Many-to-Many Relationships
+In relational databases, it’s normal to refer
+to rows in other tables by ID, because joins are easy. In document databases, joins are
+not needed for one-to-many tree structures, and support for joins is often weak.
+
+
+##### Are Document Databases Repeating History?
+
+While many-to-many relationships and joins are routinely used in relational databases, document databases and NoSQL reopened the debate on how best to represent
+such relationships in a database. 
+
+When it comes to representing many-to-one and many-to-many relationships, relational and document databases are not fundamentally different: in both
+cases, the related item is referenced by a unique identifier, which is called a foreign
+key in the relational model and a document reference in the document model.
+That identifier is resolved at read time by using a join or follow-up queries.
+
+
+##### Relational Versus Document Databases Today
+
+The main arguments in favor of the document data model are schema flexibility, better performance due to locality, and that for some applications it is closer to the data
+structures used by the application. The relational model counters by providing better
+support for joins, and many-to-one and many-to-many relationships.
+The poor support for joins in document databases may or may not be a problem,
+depending on the application. For example, many-to-many relationships may never
+be needed in an analytics application that uses a document database to record which
+events occurred at which time. However, if your application does use many-to-many relationships, the document model becomes less appealing.
+
+It’s not possible to say in general which data model leads to simpler application code;
+it depends on the kinds of relationships that exist between data items. For highly
+interconnected data, the document model is awkward, the relational model is acceptable, and graph models are the most natural.
+
+It seems that relational and document databases are becoming more similar over
+time, and that is a good thing: the data models complement each other. If a database
+is able to handle document-like data and also perform relational queries on it, applications can use the combination of features that best fits their needs.
+
+#### Query Languages for Data
+
+
+#### Graph-Like Data Models
+
+
+
+
 
 
 ### CHAPTER 3
