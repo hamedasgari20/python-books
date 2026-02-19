@@ -102,7 +102,37 @@ Graph models are the natural choice for use cases where relationships are centra
 #### Summary
 Data models are a powerful tool for dealing with the complexity of software, and different models are suited to different applications. The relational model has been dominant for a long time, but document and graph databases are now gaining popularity for their ability to handle specific use cases more naturally. The choice of a data model depends heavily on the structure of the data and the relationships within it. Furthermore, the move toward declarative query languages like SQL, Cypher, and SPARQL has made it easier to work with these models by allowing developers to focus on *what* they want, not *how* to get it.
 
-### CHAPTER 3
+### CHAPTER 3: Storage and Retrieval
+Now that we've explored the logical structure of data in Chapter 2, Chapter 3 dives into the physical layer: how databases actually store and retrieve data on hardware. The way a database organizes data on disk has a profound impact on its performance for different types of tasks.
+The chapter introduces a fundamental distinction between two types of workloads: Online Transaction Processing (OLTP) and Online Analytical Processing (OLAP)
+
+We will explore the internal data structures that power these engines, such as B-Trees and LSM-Trees for transactional systems, and discover why column-oriented storage is the key to high-performance analytics. Ultimately, this chapter reveals the engineering trade-offs that determine why some databases are fast for writes, others for reads, and why different tools are needed for different jobs.
+
+#### Data Structures That Power Your Database
+
+
+##### Hash Indexes
+
+##### SSTables and LSM-Trees
+
+##### B-Trees
+
+##### Comparing B-Trees and LSM-Trees
+
+##### Other Indexing Structures
+
+
+
+#### Transaction Processing or Analytics?
+
+
+
+
+#### Column-Oriented Storage
+
+
+
+#### Summary
 
 
 ### CHAPTER 4
