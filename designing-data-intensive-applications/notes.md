@@ -22,7 +22,22 @@ Authors: Martin Kleppmann
       * [Query Languages for Data](#query-languages-for-data)
       * [Graph-Like Data Models](#graph-like-data-models)
       * [Summary](#summary-1)
-    * [CHAPTER 3](#chapter-3)
+    * [CHAPTER 3: Storage and Retrieval](#chapter-3-storage-and-retrieval)
+      * [Data Structures That Power Your Database](#data-structures-that-power-your-database)
+        * [Hash Indexes](#hash-indexes)
+        * [SSTables and LSM-Trees](#sstables-and-lsm-trees)
+        * [B-Trees](#b-trees)
+        * [Comparing B-Trees and LSM-Trees](#comparing-b-trees-and-lsm-trees)
+        * [Other Indexing Structures](#other-indexing-structures)
+      * [Transaction Processing or Analytics?](#transaction-processing-or-analytics)
+        * [Data Warehousing](#data-warehousing)
+        * [Stars and Snowflakes: Schemas for Analytics](#stars-and-snowflakes-schemas-for-analytics)
+      * [Column-Oriented Storage](#column-oriented-storage)
+        * [Column Compression](#column-compression)
+        * [Sort Order in Column Storage](#sort-order-in-column-storage)
+        * [Writing to Column-Oriented Storage](#writing-to-column-oriented-storage)
+        * [Aggregation: Data Cubes and Materialized Views](#aggregation-data-cubes-and-materialized-views)
+      * [Summary](#summary-2)
     * [CHAPTER 4](#chapter-4)
   * [PART II: Distributed Data](#part-ii-distributed-data)
   * [PART III: Derived Data](#part-iii-derived-data)
@@ -271,16 +286,41 @@ The main difference is a trade-off between **query performance and storage size*
 
 
 
-
-
-
-
-
-
-
-
-
 #### Column-Oriented Storage
+
+
+This section introduces a fundamental design choice for analytical databases: **column-oriented storage**.
+
+Instead of storing all data for a row together (row-oriented), columnar databases store all values for a single column together on disk.
+
+*   **Example:** All `price` values are stored in one file, and all `product_name` values are stored in a separate file.
+
+**Key Advantage for Analytics:**
+For analytical queries (OLAP) that often only need a few columns (e.g., `SELECT SUM(price) FROM sales`), this design is vastly more efficient. The database only needs to read the `price` column from disk, completely ignoring the other columns. This dramatically reduces the amount of data read from disk, making analytical queries significantly faster than on row-oriented systems.
+
+
+##### Column Compression
+
+
+Column compression is extremely effective because data within a single column is often very similar or repetitive. This allows for highly efficient compression techniques like **Run-Length Encoding** (e.g., storing 'USA, USA, USA' as 'USAx3').
+
+The primary benefit of compression in analytical databases is not just saving storage space, but **dramatically increasing query speed**.
+
+This is because disk I/O is often the biggest bottleneck. Reading a small, compressed file from disk is much faster than reading a large, uncompressed one. The CPU cost of decompressing the data is trivial compared to the time saved on the slow disk operation.
+
+In essence, column compression acts as a **performance accelerator**: it reduces the amount of data read from disk, allowing analytical queries to run significantly faster.
+
+
+##### Sort Order in Column Storage
+
+
+
+
+##### Writing to Column-Oriented Storage
+
+##### Aggregation: Data Cubes and Materialized Views
+
+
 
 
 
