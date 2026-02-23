@@ -71,51 +71,46 @@ Maintainability means designing software in such a way that it will hopefully mi
 #### Summary
 In this chapter, we have explored some fundamental ways of thinking about data intensive applications. These principles will guide us through the rest of the book, where we dive into deep technical detail.
 
+
 ### CHAPTER 2: Data Models and Query Languages
-Data models are perhaps the most important part of developing software, because they have such a profound effect: not only on how the software is written, but also on how we think about the problem that we are solving. In this chapter we will look at a range of general-purpose data models for data storage and querying. In particular, we will compare the relational model, the document model, and a few graph-based data models. We will also look at various query languages and compare their use cases.
+Data models are fundamental to how we think about problems and write software. This chapter compares the most common models—relational, document, and graph—and the query languages used to interact with them.
 
 #### Relational Model Versus Document Model
 
-##### The Object-Relational Mismatch
-The document model (e.g., JSON) often maps better to application code, especially for data with a tree-like structure. For example, an entire user profile with nested positions and education can be stored in a single document. This is simpler to retrieve than a relational model, which would require joining multiple tables (users, positions, education) to reconstruct the same profile.
+The core difference lies in how data is structured. The **relational model** normalizes data into multiple tables, linked by IDs (foreign keys). The **document model** stores related data in a single, tree-like document (e.g., JSON).
 
-##### Many-to-One and Many-to-Many Relationships
-In relational databases, it’s normal to refer to rows in other tables by ID, because joins are easy. In document databases, joins are not needed for one-to-many tree structures, and support for joins is often weak.
+*   **Document Model Strengths:** Offers schema flexibility and better performance for "one-to-many" relationships, as all related data is read in one go (data locality).
+*   **Relational Model Strengths:** Excels at handling "many-to-many" relationships and joins, which are often weak or cumbersome in document databases.
 
-##### Are Document Databases Repeating History?
-When it comes to representing many-to-one and many-to-many relationships, relational and document databases are not fundamentally different: in both cases, the related item is referenced by a unique identifier, which is called a foreign key in the relational model and a document reference in the document model. That identifier is resolved at read time by using a join or follow-up queries.
-
-##### Relational Versus Document Databases Today
-The main arguments in favor of the document data model are schema flexibility, better performance due to data locality, and that for some applications it is closer to the data structures used by the application. The relational model counters by providing better support for joins, and many-to-one and many-to-many relationships.
-
-It’s not possible to say in general which data model leads to simpler application code; it depends on the kinds of relationships that exist between data items. For highly interconnected data, the document model is awkward, the relational model is acceptable, and graph models are the most natural.
-
-It seems that relational and document databases are becoming more similar over time, and that is a good thing: the data models complement each other. If a database is able to handle document-like data and also perform relational queries on it, applications can use the combination of features that best fits their needs.
+**Conclusion:** The choice depends on your data. For tree-like structures, documents are simpler. For highly interconnected data, relational is better, and graph models are best. Modern databases are increasingly adopting features from both models.
 
 #### Query Languages for Data
-This section explores the fundamental difference between two types of query languages: **imperative and declarative**.
 
-In **declarative** query languages (like SQL), you specify *what* data you want, but not *how* to retrieve it. The database's query optimizer decides the most efficient way to execute the query, which often leads to simpler code and better performance.
+This section covers the critical difference between **imperative** and **declarative** query languages.
 
-In contrast, **imperative** languages (like MapReduce) require you to provide step-by-step instructions on how to process the data. This gives more control but can be more complex and prevents the database from optimizing the execution plan.
+*   **Imperative** (e.g., MapReduce): You specify *how* to get the data with step-by-step instructions.
+*   **Declarative** (e.g., SQL): You specify *what* data you want, and the database's query optimizer figures out the most efficient way to retrieve it.
 
-This section highlights that this declarative approach is so powerful that it has been adopted for other data models, such as graph databases.
+The declarative approach is superior because it leads to simpler code and allows the database to automatically optimize performance. This "what, not how" principle is now the foundation for most modern query languages, including those for graph databases.
 
 #### Graph-Like Data Models
-While relational and document models work well for many data structures, they become cumbersome and inefficient when dealing with highly interconnected data, especially complex many-to-many relationships.
 
-Graph data models are designed to address this by treating relationships as first-class citizens. A graph consists of two key components:
-*   **Nodes** (or vertices): Represent entities (e.g., people, products).
-*   **Edges** (or relationships): Represent the connections between nodes.
+For highly interconnected data where relationships are as important as the entities themselves, **graph models** are the most natural fit.
 
-Crucially, both nodes and edges can have properties, allowing you to store rich information not just about the entities but also about the relationships themselves (e.g., the timestamp of a 'LIKES' relationship). This model makes traversing complex networks (like finding "friends of friends") intuitive and efficient.
+A graph consists of:
+*   **Nodes:** Entities (e.g., people, products).
+*   **Edges:** Relationships between nodes (e.g., 'FRIENDS_WITH', 'BOUGHT').
 
-The chapter introduces two main graph models: the **property graph model** (queried with languages like **Cypher**) and the **triple-store model** (queried with **SPARQL**). Both use a declarative approach, where you describe the pattern of nodes and relationships you want to find. The chapter also mentions **Datalog** as a more powerful, foundational data model that has influenced these modern query languages.
-
-Graph models are the natural choice for use cases where relationships are central, such as social networks, recommendation engines, fraud detection, and knowledge graphs.
+Crucially, both nodes and edges can have properties (e.g., a 'FRIENDS_WITH' edge could have a `since` date). This model makes traversing complex networks (e.g., "find friends of friends") intuitive and efficient. Graph databases use declarative query languages like **Cypher** and **SPARQL** to describe patterns in the graph.
 
 #### Summary
-Data models are a powerful tool for dealing with the complexity of software, and different models are suited to different applications. The relational model has been dominant for a long time, but document and graph databases are now gaining popularity for their ability to handle specific use cases more naturally. The choice of a data model depends heavily on the structure of the data and the relationships within it. Furthermore, the move toward declarative query languages like SQL, Cypher, and SPARQL has made it easier to work with these models by allowing developers to focus on *what* they want, not *how* to get it.
+
+There is no single "best" data model. The key is to choose the right tool for the job:
+*   Use **relational** databases for structured data and complex joins.
+*   Use **document** stores for flexible, tree-like data.
+*   Use **graph** databases for highly interconnected data.
+
+The trend toward **declarative query languages** (like SQL, Cypher) allows developers to focus on the logic of their questions, leaving the performance optimization to the database engine.
 
 ### CHAPTER 3: Storage and Retrieval
 Now that we've explored the logical structure of data in Chapter 2, Chapter 3 dives into the physical layer: how databases actually store and retrieve data on hardware. The way a database organizes data on disk has a profound impact on its performance for different types of tasks.
