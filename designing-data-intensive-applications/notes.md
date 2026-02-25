@@ -379,6 +379,67 @@ Finally, the chapter covers how writing works in columnar systems (batching writ
 
 ### CHAPTER 4
 
+This chapter addresses a fundamental challenge in software engineering: data changes over time. As systems evolve, the structure of their data also evolves. The core problem is ensuring that different parts of a system—potentially running different versions of the code—can still communicate effectively.
+
+**The Two Core Problems:**
+
+**Data in Motion:** Data is constantly moving between processes (e.g., from a client to a server, or between microservices). Each process needs to decode the data sent by the other.
+
+**Evolving Data:** The format of this data is not static. New fields are added, old ones are removed. This creates a critical need for compatibility.
+
+**The Goal: Compatibility**
+
+The chapter focuses on achieving two types of compatibility to prevent systems from breaking as they evolve:
+
+- **Backward Compatibility:** New code can read data written by old code.
+- **Forward Compatibility:** Old code can read data written by new code (by gracefully ignoring new fields it doesn't understand).
+
+
+The chapter will explore different data encoding formats (like JSON, Protocol Buffers, Avro) and how well they support this kind of evolution, ensuring that our systems remain robust and maintainable over time.
+
+
+#### Formats for Encoding Data
+This section compares different ways to encode data in memory (objects) into a byte sequence for storage or network transmission, focusing on their ability to handle schema evolution.
+
+##### 1. Language-Specific Formats (e.g., Java Serialization, Python Pickle)
+
+Pros: Easy to use within a single language.
+Cons: Language lock-in (cannot be read by other languages), major security risks, and very poor support for schema evolution. They are unsuitable for data that needs to be stored long-term or shared between systems.
+##### 2. Standard Text Formats (JSON, XML)
+
+Pros: Human-readable and widely supported, making them great for interoperability.
+Cons: Verbose (take up more space) and ambiguous about data types (e.g., is a number an integer or a string?). They lack a formal schema. Binary variants like MessagePack reduce size but not the ambiguity.
+##### 3. Binary Schema-Based Formats (Thrift, Protocol Buffers)
+
+These require defining a schema first, which is then used to generate code for various languages.
+Pros: Provide strong typing, compact binary encoding, and excellent performance.
+Key Strength: Their key advantage is a well-defined set of rules for schema evolution, allowing for forward and backward compatibility (e.g., you can add new optional fields without breaking old code).
+
+
+
+
+
+
+
+
+
+
+#### Modes of Dataflow
+
+##### Dataflow Through Databases
+
+##### Dataflow Through Services: REST and RPC
+
+##### Message-Passing Dataflow
+
+
+
+
+
+
+
+#### Summary
+
 
 ## PART II: Distributed Data
 
