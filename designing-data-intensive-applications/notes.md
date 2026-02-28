@@ -15,10 +15,6 @@ Authors: Martin Kleppmann
       * [Summary](#summary)
     * [CHAPTER 2: Data Models and Query Languages](#chapter-2-data-models-and-query-languages)
       * [Relational Model Versus Document Model](#relational-model-versus-document-model)
-        * [The Object-Relational Mismatch](#the-object-relational-mismatch)
-        * [Many-to-One and Many-to-Many Relationships](#many-to-one-and-many-to-many-relationships)
-        * [Are Document Databases Repeating History?](#are-document-databases-repeating-history)
-        * [Relational Versus Document Databases Today](#relational-versus-document-databases-today)
       * [Query Languages for Data](#query-languages-for-data)
       * [Graph-Like Data Models](#graph-like-data-models)
       * [Summary](#summary-1)
@@ -39,7 +35,36 @@ Authors: Martin Kleppmann
         * [Aggregation: Data Cubes and Materialized Views](#aggregation-data-cubes-and-materialized-views)
       * [Summary](#summary-2)
     * [CHAPTER 4](#chapter-4)
+      * [Formats for Encoding Data](#formats-for-encoding-data)
+        * [1. Language-Specific Formats (e.g., Java Serialization, Python Pickle)](#1-language-specific-formats-eg-java-serialization-python-pickle)
+        * [2. Standard Text Formats (JSON, XML)](#2-standard-text-formats-json-xml)
+        * [3. Binary Schema-Based Formats (Thrift, Protocol Buffers)](#3-binary-schema-based-formats-thrift-protocol-buffers)
+      * [Modes of Dataflow](#modes-of-dataflow)
+      * [Summary](#summary-3)
+      * [The Challenge: Data Encoding and Evolution](#the-challenge-data-encoding-and-evolution)
+      * [The Pathways: Modes of Dataflow](#the-pathways-modes-of-dataflow)
   * [PART II: Distributed Data](#part-ii-distributed-data)
+    * [CHAPTER 5: Replication](#chapter-5-replication)
+      * [Leaders and Followers](#leaders-and-followers)
+      * [Synchronous Versus Asynchronous Replication](#synchronous-versus-asynchronous-replication)
+      * [Setting Up New Followers](#setting-up-new-followers)
+      * [Handling Node Outages](#handling-node-outages)
+      * [Implementation of Replication Logs](#implementation-of-replication-logs)
+      * [Problems with Replication Lag](#problems-with-replication-lag)
+        * [Reading Your Own Writes](#reading-your-own-writes)
+        * [Monotonic Reads](#monotonic-reads)
+        * [Consistent Prefix Reads](#consistent-prefix-reads)
+        * [Solutions for Replication Lag](#solutions-for-replication-lag)
+      * [Multi-Leader Replication](#multi-leader-replication)
+        * [Use Cases for Multi-Leader Replication](#use-cases-for-multi-leader-replication)
+        * [Handling Write Conflicts](#handling-write-conflicts)
+        * [Multi-Leader Replication Topologies](#multi-leader-replication-topologies)
+      * [Leaderless Replication](#leaderless-replication)
+      * [Summary](#summary-4)
+    * [CHAPTER 6: Partitioning](#chapter-6-partitioning)
+    * [CHAPTER 7: Transactions](#chapter-7-transactions)
+    * [CHAPTER 8: The Trouble with Distributed Systems](#chapter-8-the-trouble-with-distributed-systems)
+    * [CHAPTER 9: Consistency and Consensus](#chapter-9-consistency-and-consensus)
   * [PART III: Derived Data](#part-iii-derived-data)
 <!-- TOC -->
 
@@ -418,30 +443,196 @@ Key Strength: Their key advantage is a well-defined set of rules for schema evol
 
 
 
-
-
-
-
-
-
 #### Modes of Dataflow
 
-##### Dataflow Through Databases
+This section describes the three primary ways data moves between different components or processes in a system.
 
-##### Dataflow Through Services: REST and RPC
+**1. Dataflow Through Databases**
+*   **Mechanism:** Processes communicate asynchronously via a shared database. One process writes data, and another process reads it later.
+*   **Characteristic:** This decouples the processes in time. The writer and reader don't need to be running at the same time.
 
-##### Message-Passing Dataflow
+**2. Dataflow Through Services (REST and RPC)**
+*   **Mechanism:** Processes communicate synchronously through a direct network request. The client sends a request and **waits** for the server's immediate response.
+*   **Characteristic:** This is a request-response pattern, suitable for real-time interactions. Common implementations include **REST** and **RPC**.
 
+**3. Dataflow Through Message Passing**
+*   **Mechanism:** Processes communicate asynchronously using a **message broker** (e.g., RabbitMQ, Kafka). A sender sends a message to a queue, and a receiver consumes it later.
+*   **Characteristic:** This decouples the processes completely. The sender doesn't wait for a response, and the receiver can process messages at its own pace. This provides excellent **resilience** and buffering.
 
-
+The choice of dataflow mode has a major impact on a system's coupling, performance, and fault tolerance.
 
 
 
 
 #### Summary
 
+This chapter tackles the critical challenge of making data systems resilient to change over time. As software evolves, the data it processes must also evolve. The goal is to ensure that different parts of a system, potentially running different versions of the code, can still communicate effectively. This requires achieving both **forward compatibility** (new code reads old data) and **backward compatibility** (old code reads new data).
+
+#### The Challenge: Data Encoding and Evolution
+
+The chapter first evaluates different formats for encoding data in memory into a byte sequence for storage or network transfer.
+
+*   **Language-Specific Formats (e.g., Java Serialization):** Convenient for internal use within a single language but are brittle. They suffer from vendor lock-in, security risks, and very poor support for schema evolution, making them unsuitable for long-term data storage.
+*   **Standard Text Formats (JSON, XML):** Excellent for interoperability and human readability. However, they are verbose (taking up more space) and ambiguous about data types, which can lead to errors.
+*   **Binary Schema-Based Formats (Thrift, Protocol Buffers):** These are the recommended approach for robust systems. They require defining a formal **schema**, which is then used to generate efficient binary code. Their key strength is a well-defined set of rules for **schema evolution**, allowing you to add or remove fields without breaking compatibility.
+
+#### The Pathways: Modes of Dataflow
+
+Next, the chapter explores how this encoded data actually moves between processes, outlining three primary patterns.
+
+*   **Through Databases:** Processes communicate asynchronously by writing to and reading from a shared database. This decouples them in time, as the writer and reader don't need to be active simultaneously.
+*   **Through Services (REST and RPC):** Processes communicate synchronously via direct network requests. The client sends a request and waits for an immediate response, making it suitable for real-time interactions.
+*   **Through Message Passing:** Processes communicate asynchronously via a **message broker**. A sender writes a message to a queue, and a receiver consumes it at its own pace. This pattern provides excellent **resilience** and buffering, as the sender and receiver are completely decoupled.
+
+**In summary, building a maintainable data-intensive application requires making two key choices: selecting a robust data encoding format that can evolve gracefully (favoring schema-based binary formats) and choosing the right dataflow pattern for the task at hand (synchronous vs. asynchronous).**
+
+
+
 
 ## PART II: Distributed Data
+
+In Part I, we explored the fundamentals of building powerful data systems on a **single machine**. We learned about data models, storage engines, and how to encode data for storage and transport.
+
+However, modern applications often demand more. To handle massive scale, ensure high availability, and provide low latency for a global user base, we must move beyond the limits of a single computer. This requires **distributing data across multiple machines**, which introduces a new and fascinating set of complex challenges.
+
+**Part II delves into the world of distributed data.** We will examine the core techniques for building reliable and scalable distributed systems, including:
+
+*   **Replication:** How to keep copies of data on multiple machines to prevent data loss and improve availability.
+*   **Partitioning:** How to split a large dataset into smaller, more manageable parts (often called "sharding").
+*   **Transactions:** How to maintain consistency and atomicity when an operation spans multiple machines.
+*   **The Trouble with Distributed Systems:** The fundamental difficulties caused by unreliable networks and clocks.
+*   **Consistency and Consensus:** The algorithms and protocols that allow distributed systems to agree on a state, even when things go wrong.
+
+The goal of this part is to understand the principles and trade-offs that allow us to build systems that can gracefully handle failures and scale to massive sizes.
+
+
+
+
+### CHAPTER 5: Replication
+
+This chapter addresses one of the most fundamental challenges in building reliable systems: how to prevent data loss and ensure high availability when individual machines inevitably fail. The solution is **replication**—keeping copies of the same data on multiple nodes.
+
+The chapter begins by exploring the most common replication model: **leader-follower**. In this model, one node is designated as the **leader** that handles all write operations, while the other **follower** nodes copy the changes from the leader. This creates redundancy.
+
+A critical trade-off is then introduced: **synchronous vs. asynchronous replication**.
+*   **Synchronous** replication is safer but introduces latency, as the leader waits for a follower to confirm the write.
+*   **Asynchronous** replication is faster but risks data loss if the leader fails before the followers are updated.
+
+This leads to the practical problems of **replication lag**, where followers are slightly out of date. The chapter details the issues this causes, such as being unable to read your own writes or observing inconsistent data.
+
+Finally, the chapter touches on more advanced models, including **multi-leader replication** (useful for multi-datacenter operations) and **leaderless replication** (used in systems like DynamoDB and Cassandra), each with its own set of trade-offs. The goal is to understand how to build fault-tolerant systems by carefully managing data copies.
+
+
+#### Leaders and Followers
+The most common replication model is **leader-follower**.
+*   **Leader:** The single node that accepts all write operations.
+*   **Followers:** Nodes that replicate the leader's data. They handle read requests to distribute the load.
+*   This model simplifies the write process by having a single source of truth for data changes.
+
+#### Synchronous Versus Asynchronous Replication
+This is a critical trade-off between data safety and write performance.
+*   **Synchronous:** The leader waits for at least one follower to confirm a write before acknowledging it to the client.
+    *   **Pro:** Guarantees data is safely replicated.
+    *   **Con:** Introduces significant latency.
+*   **Asynchronous:** The leader acknowledges the write immediately and sends the update to followers in the background.
+    *   **Pro:** Very fast writes.
+    *   **Con:** Risk of data loss if the leader fails before the update is replicated.
+
+#### Setting Up New Followers
+To add a new follower node:
+1.  **Take a consistent snapshot** of the leader's database.
+2.  **Copy the snapshot** to the new follower node.
+3.  **Catch up:** The new follower then requests the replication log from the leader and applies all changes that have happened since the snapshot was taken. Once it is caught up, it can start processing live updates.
+
+#### Handling Node Outages
+A robust system must handle node failures gracefully.
+*   **Follower Failure:** This is straightforward. The follower simply reconnects to the leader and requests the changes it missed from the replication log.
+*   **Leader Failure:** This is critical. The system needs a **failover** mechanism:
+    1.  Detect the leader's failure.
+    2.  Promote one of the up-to-date followers to be the new leader.
+    3.  Reconfigure all other followers and clients to use the new leader.
+
+#### Implementation of Replication Logs
+The leader needs a way to communicate changes to followers. There are three main methods:
+*   **Statement-based:** The leader sends the exact SQL command (e.g., `UPDATE...`). This can be problematic due to non-deterministic functions (like `NOW()`).
+*   **Write-ahead log (WAL) shipping:** The leader sends its internal storage log. This is efficient but tightly coupled to the database's internal format.
+*   **Logical log replication:** The leader sends a log of row-level changes (e.g., "row X was updated"). This is decoupled from the storage engine, making it more flexible and the preferred method for many modern systems.
+
+
+
+#### Problems with Replication Lag
+
+Asynchronous replication means followers are always slightly out of date compared to the leader. This **replication lag**, even if small, can cause several problematic and confusing anomalies for users.
+
+##### Reading Your Own Writes
+*   **Problem:** A user makes a write (e.g., posts a comment) and immediately reads it, but the new data doesn't appear.
+*   **Cause:** The write was processed by the leader, but the subsequent read was routed to a follower that has not yet replicated the change.
+*   **Solution:** Route the user's subsequent reads to the leader, or to followers that are guaranteed to be up-to-date.
+
+##### Monotonic Reads
+*   **Problem:** A user observes data appearing to move backward in time (e.g., sees an item as "in stock," then refreshes and sees it as "out of stock").
+*   **Cause:** Sequential reads are routed to different followers, some of which are more lagged than others.
+*   **Solution:** Ensure all reads within a user session are served by the same replica (session stickiness) or use a versioning scheme to prevent reading older data.
+
+##### Consistent Prefix Reads
+*   **Problem:** A user observes an effect before its cause (e.g., sees a reply to a question before seeing the question itself).
+*   **Cause:** Writes are replicated in parallel, and network delays can cause them to be applied on followers in a different order than they occurred on the leader.
+*   **Solution:** This is a more complex issue, often solved architecturally by ensuring that causally related writes are stored on the same partition.
+
+##### Solutions for Replication Lag
+This section summarizes the strategies for dealing with replication lag. Instead of accepting "eventual consistency," these techniques allow a system to provide stronger guarantees to the application, making reads more predictable and avoiding the anomalies described above. The solutions involve clever routing of reads and being aware of replication state.
+
+
+
+
+#### Multi-Leader Replication
+
+This is a more complex replication model where **multiple nodes are allowed to accept writes**. Instead of a single leader, several nodes act as leaders. After a write is processed, the change must be synchronized with all other leaders to ensure all replicas eventually converge.
+
+##### Use Cases for Multi-Leader Replication
+This added complexity is necessary for specific scenarios:
+*   **Multi-Data Centers:** With data centers in different geographical regions, having a leader in each region dramatically reduces write latency for local users, as they don't have to wait for a remote leader.
+*   **Offline Clients:** Applications that need to work while disconnected from the network (e.g., mobile apps). The device acts as a leader, and when it reconnects, it syncs its changes with the central server.
+
+##### Handling Write Conflicts
+The biggest challenge in a multi-leader setup is **write conflicts**, which occur when the same data is modified concurrently on different leaders.
+
+**Conflict Resolution Strategies:**
+*   **Last Write Wins (LWW):** Each write has a timestamp; the write with the newest timestamp wins. This is simple but risky due to unreliable clock synchronization.
+*   **Custom Resolution:** The application provides logic to resolve conflicts. This can be more sophisticated, such as merging the changes or asking the user to decide (similar to a Git merge conflict).
+
+##### Multi-Leader Replication Topologies
+The **topology** describes how leaders communicate with each other.
+*   **All-to-All:** Every leader sends its changes directly to every other leader.
+    *   *Pro:* Fast propagation.
+    *   *Con:* High network traffic and potential for loops.
+*   **Star:** All leaders send their changes to a single root leader, which then distributes them.
+    *   *Pro:* Simpler to manage.
+    *   *Con:* The root is a bottleneck and a single point of failure.
+*   **Tree:** A hybrid structure that organizes leaders in a hierarchy to avoid the bottlenecks of a pure star topology.
+
+
+
+
+
+
+
+#### Leaderless Replication
+
+#### Summary
+
+
+
+
+### CHAPTER 6: Partitioning
+
+### CHAPTER 7: Transactions
+
+### CHAPTER 8: The Trouble with Distributed Systems
+
+### CHAPTER 9: Consistency and Consensus
+
+
 
 
 
